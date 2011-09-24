@@ -18,51 +18,51 @@ die "The loaded JSON library does not support the encode method needed by Templa
 our $VERSION = $Template::Alloy::VERSION;
 our $INDENT  = ' ' x 2;
 our $DIRECTIVES = {
-    BLOCK   => \&compile_BLOCK,
-    BREAK   => \&compile_LAST,
-    CALL    => \&compile_CALL,
+    BLOCK   => \&compile_js_BLOCK,
+    BREAK   => \&compile_js_LAST,
+    CALL    => \&compile_js_CALL,
     CASE    => undef,
     CATCH   => undef,
-    CLEAR   => \&compile_CLEAR,
+    CLEAR   => \&compile_js_CLEAR,
     '#'     => sub {},
     COMMENT => sub {},
-    CONFIG  => \&compile_CONFIG,
-    DEBUG   => \&compile_DEBUG,
-    DEFAULT => \&compile_DEFAULT,
-    DUMP    => \&compile_DUMP,
+    CONFIG  => \&compile_js_CONFIG,
+    DEBUG   => \&compile_js_DEBUG,
+    DEFAULT => \&compile_js_DEFAULT,
+    DUMP    => \&compile_js_DUMP,
     ELSE    => undef,
     ELSIF   => undef,
     END     => sub {},
-    EVAL    => \&compile_EVAL,
-    FILTER  => \&compile_FILTER,
-    '|'     => \&compile_FILTER,
+    EVAL    => \&compile_js_EVAL,
+    FILTER  => \&compile_js_FILTER,
+    '|'     => \&compile_js_FILTER,
     FINAL   => undef,
-    FOR     => \&compile_FOR,
-    FOREACH => \&compile_FOR,
-    GET     => \&compile_GET,
-    IF      => \&compile_IF,
-    INCLUDE => \&compile_INCLUDE,
-    INSERT  => \&compile_INSERT,
-    LAST    => \&compile_LAST,
-    LOOP    => \&compile_LOOP,
-    MACRO   => \&compile_MACRO,
-    META    => \&compile_META,
-    NEXT    => \&compile_NEXT,
-    PERL    => \&compile_PERL,
-    PROCESS => \&compile_PROCESS,
-    RAWPERL => \&compile_RAWPERL,
-    RETURN  => \&compile_RETURN,
-    SET     => \&compile_SET,
-    STOP    => \&compile_STOP,
-    SWITCH  => \&compile_SWITCH,
+    FOR     => \&compile_js_FOR,
+    FOREACH => \&compile_js_FOR,
+    GET     => \&compile_js_GET,
+    IF      => \&compile_js_IF,
+    INCLUDE => \&compile_js_INCLUDE,
+    INSERT  => \&compile_js_INSERT,
+    LAST    => \&compile_js_LAST,
+    LOOP    => \&compile_js_LOOP,
+    MACRO   => \&compile_js_MACRO,
+    META    => \&compile_js_META,
+    NEXT    => \&compile_js_NEXT,
+    PERL    => \&compile_js_PERL,
+    PROCESS => \&compile_js_PROCESS,
+    RAWPERL => \&compile_js_RAWPERL,
+    RETURN  => \&compile_js_RETURN,
+    SET     => \&compile_js_SET,
+    STOP    => \&compile_js_STOP,
+    SWITCH  => \&compile_js_SWITCH,
     TAGS    => sub {},
-    THROW   => \&compile_THROW,
-    TRY     => \&compile_TRY,
-    UNLESS  => \&compile_UNLESS,
-    USE     => \&compile_USE,
-    VIEW    => \&compile_VIEW,
-    WHILE   => \&compile_WHILE,
-    WRAPPER => \&compile_WRAPPER,
+    THROW   => \&compile_js_THROW,
+    TRY     => \&compile_js_TRY,
+    UNLESS  => \&compile_js_UNLESS,
+    USE     => \&compile_js_USE,
+    VIEW    => \&compile_js_VIEW,
+    WHILE   => \&compile_js_WHILE,
+    WRAPPER => \&compile_js_WRAPPER,
 };
 
 sub new { die "This class is a role for use by packages such as Template::Alloy" }
@@ -114,31 +114,43 @@ sub load_js {
         utime $doc->{'modtime'}, $doc->{'modtime'}, $doc->{'_compile_filename'};
     }
 
-    print "---------------------------------------------\n";
-    print $$js,"\n";
-    print "---------------------------------------------\n";
+#    print "---------------------------------------------\n";
+#    print $$js,"\n";
+#    print "---------------------------------------------\n";
 
-    $js = $self->eval_js($js);
-    $self->throw('compile_js', "Trouble loading compiled js: $@") if ! $js && $@;
+    # initialize the context
+    my $ctx = $self->{'js_context'};
+    if (!$ctx) {
+        eval {require JavaScript::V8} || $self->throw('compile_js', "Trouble loading JavaScript::V8: $@");
+        eval {require Scalar::Util}   || $self->throw('compile_js', "Trouble loading Scalar::Util: $@");
+        $ctx = $self->{'js_context'} = JavaScript::V8::Context->new;
 
-    return $js;
+        my $copy = shift;
+        $ctx->bind('$_call_native' => sub { my $m = shift; my $val; eval { $val = $copy->$m(@_); 1 } || $ctx->eval('throw'); $val });
+        $ctx->bind(say => sub { print $_[0],"\n" });
+        $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
+        Scalar::Util::weaken($copy);
+
+        (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
+        $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript pre-amble: $@");
+    }
+
+    my $callback = $ctx->eval(qq{
+        alloy.register_template('$doc->{_filename}',$$js);
+        (function (out_ref) { return alloy.process('$doc->{_filename}', out_ref) })
+    }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{_filename}: $@");
+
+    return {code => sub {
+        my ($self, $out_ref) = @_;
+        $ctx->bind('$_vars' => $self->{'_vars'});
+        $ctx->bind('$_env'  => {QR_PRIVATE => "^[_.]"}); #$Template::Alloy::QR_PRIVATE"});
+        my $out = $callback->([$$out_ref]);
+        $$out_ref = $out->[0];
+        return 1;
+    }};
 }
 
 ###----------------------------------------------------------------###
-
-sub eval_js {
-    my $self = shift;
-    my $ref  = shift;
-    return $self->js_context->eval($$ref);
-}
-
-sub js_context {
-    my $self = shift;
-    return $self->{'js_context'} ||= do {
-        eval {require JavaScript::V8} || $self->throw('compile_js', "Trouble loading JavaScript::V8: $@");
-        JavaScript::V8::Context->new;
-    };
-}
 
 sub compile_template_js {
     my ($self, $doc) = @_;
@@ -153,15 +165,15 @@ sub compile_template_js {
     $self->{'_blocks'} .= "\n" if $self->{'_blocks'};
     $self->{'_meta'}   .= "\n" if $self->{'_meta'};
 
-    my $str = "(function () {
+    my $str = "(function (alloy) {
 // Generated by ".__PACKAGE__." v$VERSION on ".localtime()."
 // From file ".($doc->{'_filename'} || $doc->{'name'})."
 
 var blocks = {$self->{'_blocks'}};
 var meta   = {$self->{'_meta'}};
-var code   = function (out_ref, args) {"
-.($self->{'_blocks'} ? "\n${INDENT}tmpl.setBlocks(blocks);" : "")
-.($self->{'_meta'}   ? "\n${INDENT}tmpl.setMeta(meta);" : "")
+var code   = function (alloy, out_ref, args) {"
+.($self->{'_blocks'} ? "\n${INDENT}alloy.setBlocks(blocks);" : "")
+.($self->{'_meta'}   ? "\n${INDENT}alloy.setMeta(meta);" : "")
 ."$code
 
 ${INDENT}return out_ref;
@@ -172,7 +184,7 @@ ${INDENT}'blocks' : blocks,
 ${INDENT}'meta'   : meta,
 ${INDENT}'code'   : code
 };
-})()\n";
+})()";
 #    print $str;
     return \$str;
 }
@@ -204,7 +216,7 @@ sub compile_tree_js {
         # text nodes are just the bare text
         if (! ref $node) {
             $node =~ s/([\'\\])/\\$1/g;
-            $code .= "\n\n${indent}out_ref[0] += '$node';";
+            $code .= "\n\n${indent}out_ref[0] += ".$json->encode($node).";";
             next;
         }
 
@@ -213,9 +225,9 @@ sub compile_tree_js {
             my ($file, $line, $text) = @{ $info }{qw(file line text)};
             s/\'/\\\'/g foreach $file, $line, $text;
             $code .= "\n
-${indent}if (tmpl._debug_dirs && ! tmpl._debug_off) { // DEBUG
+${indent}if (alloy._debug_dirs && ! alloy._debug_off) { // DEBUG
 ${indent}${INDENT}var info = {'file': '$file', 'line': '$line', 'text': '$text'};
-${indent}${INDENT}var format = tmpl._debug_format || tmpl.DEBUG_FORMAT || \"\\n/* \\\$file line \\\$line : [% \\\$text %] */\\n\";
+${indent}${INDENT}var format = alloy._debug_format || alloy.DEBUG_FORMAT || \"\\n/* \\\$file line \\\$line : [% \\\$text %] */\\n\";
 ${indent}${INDENT}out_ref[0] += (''+format).replace(/\\\$(file|line|text)/, function (m, one) { info[one] }, 1);
 ${indent}}";
         }
@@ -239,7 +251,7 @@ ${indent}}";
 
 sub compile_expr_js {
     my ($self, $var, $indent) = @_;
-    return ref($var) ? "tmpl.play_expr(".$json->encode($var).")" : $json->encode($var);
+    return ref($var) ? "alloy.play_expr(".$json->encode($var).")" : $json->encode($var);
 }
 
 sub _compile_defer_to_play {
@@ -249,7 +261,7 @@ sub _compile_defer_to_play {
 
     $$str_ref .= "
 ${indent}ref = ".$self->ast_string($node->[3]).";
-${indent}tmpl.call_directive('$directive', ref, ".$json->encode($node).", out_ref);";
+${indent}alloy.call_directive('$directive', ref, ".$json->encode($node).", out_ref);";
 
     return;
 }
@@ -262,7 +274,7 @@ sub _is_empty_named_args {
 
 ###----------------------------------------------------------------###
 
-sub compile_BLOCK {
+sub compile_js_BLOCK {
     my ($self, $node, $str_ref, $indent) = @_;
 
     my $ref  = \ $self->{'_blocks'};
@@ -286,24 +298,24 @@ ${INDENT}},";
     return;
 }
 
-sub compile_CALL {
+sub compile_js_CALL {
     my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "\n${indent}".$self->compile_expr_js($node->[3], $indent).";";
     return;
 }
 
-sub compile_CLEAR {
+sub compile_js_CLEAR {
     my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}out_ref[0] = '';";
 }
 
-sub compile_CONFIG {
+sub compile_js_CONFIG {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_DEBUG {
+sub compile_js_DEBUG {
     my ($self, $node, $str_ref, $indent) = @_;
 
     my $text = $node->[3]->[0];
@@ -320,26 +332,26 @@ sub compile_DEBUG {
     return;
 }
 
-sub compile_DEFAULT {
+sub compile_js_DEFAULT {
     my ($self, $node, $str_ref, $indent) = @_;
     local $self->{'_is_default'} = 1;
     $DIRECTIVES->{'SET'}->($self, $node, $str_ref, $indent);
 }
 
-sub compile_DUMP {
+sub compile_js_DUMP {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_GET {
+sub compile_js_GET {
     my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}ref = ".$self->compile_expr_js($node->[3], $indent).";
-${indent}out_ref[0] += (typeof ref != 'undefined') ? ref : tmpl.undefined_get(".$json->encode($node->[3]).");";
+${indent}out_ref[0] += (ref != null) ? ref : alloy.undefined_get(".$json->encode($node->[3]).");";
     return;
 }
 
-sub compile_EVAL {
+sub compile_js_EVAL {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($named, @strs) = @{ $node->[3] };
 
@@ -351,7 +363,7 @@ ${indent}${INDENT}\$\$out_ref .= \$self->play_expr([[undef, '-temp-', \$str], 0,
 ${indent}}";
 }
 
-sub compile_FILTER {
+sub compile_js_FILTER {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($name, $filter) = @{ $node->[3] };
     return if ! @$filter;
@@ -378,7 +390,7 @@ ${indent}\$\$out_ref .= \$var if defined \$var;";
 
 }
 
-sub compile_FOR {
+sub compile_js_FOR {
     my ($self, $node, $str_ref, $indent) = @_;
 
     my ($name, $items) = @{ $node->[3] };
@@ -413,9 +425,9 @@ ${indent}};";
     return;
 }
 
-sub compile_FOREACH { shift->compile_FOR(@_) }
+sub compile_js_FOREACH { shift->compile_FOR(@_) }
 
-sub compile_IF {
+sub compile_js_IF {
     my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "\n${indent}if (".$self->compile_expr($node->[3], $indent).") {";
@@ -435,24 +447,24 @@ sub compile_IF {
     $$str_ref .= "\n${indent}}";
 }
 
-sub compile_INCLUDE {
+sub compile_js_INCLUDE {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_INSERT {
+sub compile_js_INSERT {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_LAST {
+sub compile_js_LAST {
     my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found LAST while not in FOR, FOREACH or WHILE";
     $$str_ref .= "\n${indent}last $type;";
     return;
 }
 
-sub compile_LOOP {
+sub compile_js_LOOP {
     my ($self, $node, $str_ref, $indent) = @_;
     my $ref = $node->[3];
     $ref = [$ref, 0] if ! ref $ref;
@@ -475,7 +487,7 @@ ${indent}${INDENT}}
 ${indent}}";
 }
 
-sub compile_MACRO {
+sub compile_js_MACRO {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($name, $args) = @{ $node->[3] };
 
@@ -529,7 +541,7 @@ ${indent}};";
     return;
 }
 
-sub compile_META {
+sub compile_js_META {
     my ($self, $node, $str_ref, $indent) = @_;
     if ($node->[3]) {
         while (my($key, $val) = each %{ $node->[3] }) {
@@ -540,7 +552,7 @@ sub compile_META {
     return;
 }
 
-sub compile_NEXT {
+sub compile_js_NEXT {
     my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
     $$str_ref .= "\n${indent}(\$var, \$error) = \$loop->get_next;" if $type eq 'FOREACH';
@@ -548,7 +560,7 @@ sub compile_NEXT {
     return;
 }
 
-sub compile_PERL{
+sub compile_js_PERL{
     my ($self, $node, $str_ref, $indent) = @_;
 
     ### fill in any variables
@@ -587,17 +599,17 @@ ${indent}}";
 }
 
 
-sub compile_PROCESS {
+sub compile_js_PROCESS {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_RAWPERL {
+sub compile_js_RAWPERL {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_RETURN {
+sub compile_js_RETURN {
     my ($self, $node, $str_ref, $indent) = @_;
 
     if (defined($node->[3])) {
@@ -610,7 +622,7 @@ ${indent}\$self->throw('return', undef);";
     }
 }
 
-sub compile_SET {
+sub compile_js_SET {
     my ($self, $node, $str_ref, $indent) = @_;
     my $sets = $node->[3];
 
@@ -644,7 +656,7 @@ ${indent}}"
         }
 
         $$str_ref .= ";
-${indent}tmpl.set_variable(".$json->encode($set).", ref)";
+${indent}alloy.set_variable(".$json->encode($set).", ref)";
 
         if ($self->{'_is_default'}) {
             substr($indent, -length($INDENT), length($INDENT), '');
@@ -657,13 +669,13 @@ ${indent}tmpl.set_variable(".$json->encode($set).", ref)";
     return $out;
 }
 
-sub compile_STOP {
+sub compile_js_STOP {
     my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}\$self->throw('stop', 'Control Exception');";
 }
 
-sub compile_SWITCH {
+sub compile_js_SWITCH {
     my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "
@@ -699,7 +711,7 @@ ${indent}${INDENT}my \$var;";
     return;
 }
 
-sub compile_THROW {
+sub compile_js_THROW {
     my ($self, $node, $str_ref, $indent) = @_;
 
     my ($name, $args) = @{ $node->[3] };
@@ -713,7 +725,7 @@ ${indent}\$self->throw(".$self->compile_expr($name, $indent).", [".join(", ", ma
 }
 
 
-sub compile_TRY {
+sub compile_js_TRY {
     my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "
@@ -786,14 +798,14 @@ ${indent}};";
     return;
 }
 
-sub compile_UNLESS { $DIRECTIVES->{'IF'}->(@_) }
+sub compile_js_UNLESS { $DIRECTIVES->{'IF'}->(@_) }
 
-sub compile_USE {
+sub compile_js_USE {
     my ($self, $node, $str_ref, $indent) = @_;
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_VIEW {
+sub compile_js_VIEW {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($blocks, $args, $name) = @{ $node->[3] };
 
@@ -865,7 +877,7 @@ ${indent}};";
     return;
 }
 
-sub compile_WHILE {
+sub compile_js_WHILE {
     my ($self, $node, $str_ref, $indent) = @_;
 
     local $self->{'_in_loop'} = 'WHILE';
@@ -880,7 +892,7 @@ ${indent}}";
     return;
 }
 
-sub compile_WRAPPER {
+sub compile_js_WRAPPER {
     my ($self, $node, $str_ref, $indent) = @_;
 
     my ($named, @files) = @{ $node->[3] };
@@ -932,7 +944,7 @@ Translate compile_RAWPERL to actually output rather than calling play_RAWPERL.
 
 =over 4
 
-=item C<compile_tree>
+=item C<compile_tree_js>
 
 Takes an AST returned by parse_tree and translates it into
 perl code using functions stored in the $DIRECTIVES hashref.
@@ -944,41 +956,44 @@ A template that looked like the following:
     [% GET bar %]
     Bar
 
-would parse to the following perl code:
+would parse to the following javascript code:
 
-    # Generated by Template::Alloy::Compile v1.001 on Thu Jun  7 12:58:33 2007
-    # From file /home/paul/bar.tt
+    (function (alloy) {
+    // Generated by Template::Alloy::JS v1.016 on Sat Sep 24 00:38:55 2011
+    // From file /home/paul/bar.tt
 
-    my $blocks = {};
-    my $meta   = {};
-    my $code   = sub {
-        my ($self, $out_ref, $var) = @_;
+    var blocks = {};
+    var meta   = {};
+    var code   = function (alloy, out_ref, args) {
 
-        $$out_ref .= 'Foo';
+      out_ref[0] += "    Foo\n    ":
 
-        # "GET" Line 2 char 2 (chars 6 to 15)
-        $var = $self->play_expr(['foo', 0]);
-        $$out_ref .= defined($var) ? $var : $self->undefined_get(['foo', 0]);
+      // "GET" Line 2 char 6 (chars 14 to 22)
+      ref = alloy.play_expr(["foo",0]);
+      out_ref[0] += (typeof ref != 'undefined') ? ref : alloy.undefined_get(["foo",0]);
 
-        # "GET" Line 3 char 2 (chars 22 to 31)
-        $var = $self->play_expr(['bar', 0]);
-        $$out_ref .= defined($var) ? $var : $self->undefined_get(['bar', 0]);
+      out_ref[0] += "\n    ":
 
-        $$out_ref .= 'Bar';
+      // "GET" Line 3 char 6 (chars 32 to 40)
+      ref = alloy.play_expr(["bar",0]);
+      out_ref[0] += (typeof ref != 'undefined') ? ref : alloy.undefined_get(["bar",0]);
 
-        return 1;
+      out_ref[0] += "\n    Bar":
+
+      return out_ref;
     };
 
-    {
-        blocks => $blocks,
-        meta   => $meta,
-        code   => $code,
+    return {
+      'blocks' : blocks,
+      'meta'   : meta,
+      'code'   : code
     };
+    })()
 
 As you can see the output is quite a bit more complex than the AST, but under
-mod_perl conditions, the perl will run faster than playing the AST each time.
+mod_perl conditions, the javascript will run faster than playing the AST each time.
 
-=item C<compile_expr>
+=item C<compile_expr_js>
 
 Takes an AST variable or expression and returns perl code that can lookup
 the variable.
