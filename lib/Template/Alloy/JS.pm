@@ -67,6 +67,7 @@ our $DIRECTIVES = {
 
 sub new { die "This class is a role for use by packages such as Template::Alloy" }
 
+our $js_context;
 sub load_js {
     my ($self, $doc) = @_;
 
@@ -114,9 +115,11 @@ sub load_js {
         utime $doc->{'modtime'}, $doc->{'modtime'}, $doc->{'_compile_filename'};
     }
 
-#    print "---------------------------------------------\n";
-#    print $$js,"\n";
-#    print "---------------------------------------------\n";
+    if ($ENV{'DUMPJS'}) {
+        print "---------------------------------------------\n";
+        print $$js,"\n";
+        print "---------------------------------------------\n";
+    }
 
     # initialize the context
     my $ctx = $self->{'js_context'};
@@ -126,12 +129,18 @@ sub load_js {
         $ctx = $self->{'js_context'} = JavaScript::V8::Context->new;
 
         my $copy = shift;
-        $ctx->bind('$_call_native' => sub { my $m = shift; my $val; eval { $val = $copy->$m(@_); 1 } || $ctx->eval('throw'); $val });
+        $ctx->bind('$_call_native' => sub { my $m = shift; print "-------------callnative: $m\n"; my $val; eval { $val = $copy->$m(@_); 1 } || $ctx->eval('throw'); $val });
         $ctx->bind(say => sub { print $_[0],"\n" });
         $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
         Scalar::Util::weaken($copy);
 
-        (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
+        #(my $file2 = __FILE__) =~ s|JS\.pm$|stack.js|;
+        #$ctx->eval(${ $self->slurp($file2) }) || $self->throw('compile_js', "Trouble loading javascript stacktrace: $@");
+
+        (my $file = __FILE__) =~ s|JS\.pm$|vmethods.js|;
+        $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript vmethods: $@");
+
+        ($file = __FILE__) =~ s|JS\.pm$|alloy.js|;
         $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript pre-amble: $@");
     }
 
@@ -143,7 +152,11 @@ sub load_js {
     return {code => sub {
         my ($self, $out_ref) = @_;
         $ctx->bind('$_vars' => $self->{'_vars'});
-        $ctx->bind('$_env'  => {QR_PRIVATE => "^[_.]"}); #$Template::Alloy::QR_PRIVATE"});
+        $ctx->bind('$_env'  => {
+            QR_PRIVATE => "^[_.]", #$Template::Alloy::QR_PRIVATE"});
+            VMETHOD_FUNCTIONS => $self->{'VMETHOD_FUNCTIONS'},
+            LOWER_CASE_VAR_FALLBACK => $self->{'LOWER_CASE_VAR_FALLBACK'},
+        });
         my $out = $callback->([$$out_ref]);
         $$out_ref = $out->[0];
         return 1;
