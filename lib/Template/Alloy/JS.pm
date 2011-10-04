@@ -68,6 +68,7 @@ our $DIRECTIVES = {
 sub new { die "This class is a role for use by packages such as Template::Alloy" }
 
 our $js_context;
+our $js_self;
 sub load_js {
     my ($self, $doc) = @_;
 
@@ -122,17 +123,13 @@ sub load_js {
     }
 
     # initialize the context
-    my $ctx = $self->{'js_context'};
+    my $ctx = $js_context;
     if (!$ctx) {
         eval {require JavaScript::V8} || $self->throw('compile_js', "Trouble loading JavaScript::V8: $@");
-        eval {require Scalar::Util}   || $self->throw('compile_js', "Trouble loading Scalar::Util: $@");
-        $ctx = $self->{'js_context'} = JavaScript::V8::Context->new;
+        $ctx = $js_context = JavaScript::V8::Context->new;
 
-        my $copy = shift;
-        $ctx->bind('$_call_native' => sub { my $m = shift; print "-------------callnative: $m\n"; my $val; eval { $val = $copy->$m(@_); 1 } || $ctx->eval('throw'); $val });
         $ctx->bind(say => sub { print $_[0],"\n" });
         $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
-        Scalar::Util::weaken($copy);
 
         #(my $file2 = __FILE__) =~ s|JS\.pm$|stack.js|;
         #$ctx->eval(${ $self->slurp($file2) }) || $self->throw('compile_js', "Trouble loading javascript stacktrace: $@");
@@ -142,6 +139,8 @@ sub load_js {
 
         ($file = __FILE__) =~ s|JS\.pm$|alloy.js|;
         $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript pre-amble: $@");
+
+        $ctx->bind('$_call_native' => sub { my $m = shift; print "-------------callnative: $m\n"; my $val; eval { $val = $js_self->$m(@_); 1 } || $ctx->eval('throw'); $val });
     }
 
     my $callback = $ctx->eval(qq{
@@ -151,14 +150,15 @@ sub load_js {
 
     return {code => sub {
         my ($self, $out_ref) = @_;
+        local $js_self = $self;
         $ctx->bind('$_vars' => $self->{'_vars'});
         $ctx->bind('$_env'  => {
-            QR_PRIVATE => "^[_.]", #$Template::Alloy::QR_PRIVATE"});
-            VMETHOD_FUNCTIONS => $self->{'VMETHOD_FUNCTIONS'},
             LOWER_CASE_VAR_FALLBACK => $self->{'LOWER_CASE_VAR_FALLBACK'},
-            NO_INCLUDES => $self->{'NO_INCLUDES'},
-            TRIM => $self->{'TRIM'},
-            UNDEFINED_GET => $self->{'UNDEFINED_GET'} ? 1 : 0,
+            NO_INCLUDES             => $self->{'NO_INCLUDES'},
+            QR_PRIVATE              => "^[_.]", #$Template::Alloy::QR_PRIVATE"});
+            TRIM                    => $self->{'TRIM'},
+            UNDEFINED_GET           => $self->{'UNDEFINED_GET'} ? 1 : 0,
+            VMETHOD_FUNCTIONS       => $self->{'VMETHOD_FUNCTIONS'},
         });
         my $out = $callback->([$$out_ref]);
         $$out_ref = $out->[0];
