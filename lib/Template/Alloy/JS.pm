@@ -158,6 +158,7 @@ sub load_js {
             LOWER_CASE_VAR_FALLBACK => $self->{'LOWER_CASE_VAR_FALLBACK'},
             NO_INCLUDES => $self->{'NO_INCLUDES'},
             TRIM => $self->{'TRIM'},
+            UNDEFINED_GET => $self->{'UNDEFINED_GET'} ? 1 : 0,
         });
         my $out = $callback->([$$out_ref]);
         $$out_ref = $out->[0];
@@ -411,23 +412,25 @@ sub compile_js_FOR {
 
     my ($name, $items) = @{ $node->[3] };
     local $self->{'_in_loop'} = 'FOREACH';
+    local $self->{'_loop_index'} = ($self->{'_loop_index'} || 0) + 1;
+    my $i = $self->{'_loop_index'};
     my $code = $self->compile_tree_js($node->[4], "$indent$INDENT");
 
     $$str_ref .= "
-${indent}var old_loop = \$_vars.loop;
+${indent}var old_loop${i} = \$_vars.loop;
 ${indent}var err;
 ${indent}try {
-${indent}var loop = ".$self->compile_expr_js($items, $indent).";
-${indent}if (loop == null) loop = [];
-${indent}if (!loop.get_first) loop = new alloy.iterator(loop);
-${indent}\$_vars.loop = loop;";
+${indent}var loop${i} = ".$self->compile_expr_js($items, $indent).";
+${indent}if (loop${i} == null) loop${i} = [];
+${indent}if (!loop${i}.get_first) loop${i} = new alloy.iterator(loop${i});
+${indent}\$_vars.loop = loop${i};";
     if (! defined $name) {
         $$str_ref .= "
 ${indent}alloy.saveScope();";
     }
 
     $$str_ref .= "
-${indent}ref = loop.get_first();
+${indent}ref = loop${i}.get_first();
 ${indent}var val = ref[0];
 ${indent}var error = ref[1];
 ${indent}while (!error) {";
@@ -441,7 +444,7 @@ $indent${INDENT}if (val && typeof val == 'object' && !(val instanceof Array || v
     }
 
     $$str_ref .= "$code
-${indent}${INDENT}ref = loop.get_next();
+${indent}${INDENT}ref = loop${i}.get_next();
 ${indent}${INDENT}val   = ref[0];
 ${indent}${INDENT}error = ref[1];
 ${indent}${INDENT}}
@@ -451,7 +454,7 @@ ${indent}} catch (e) { err = e }";
 ${indent}alloy.restoreScope();";
     }
     $$str_ref .= "
-${indent}\$_vars.loop = old_loop;
+${indent}\$_vars.loop = old_loop${i};
 ${indent}if (err != null) throw 'Got some sort of error '+err;";
     return;
 }
@@ -586,7 +589,8 @@ sub compile_js_META {
 sub compile_js_NEXT {
     my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
-    $$str_ref .= "\n${indent}ref = loop.get_next(); val = ref[0]; error = ref[1];" if $type eq 'FOREACH';
+    my $i = $self->{'_loop_index'} || die "Missing loop_index";
+    $$str_ref .= "\n${indent}ref = loop${i}.get_next(); val = ref[0]; error = ref[1];" if $type eq 'FOREACH';
     $$str_ref .= "\n${indent}continue;"; #next $type;";
     return;
 }
