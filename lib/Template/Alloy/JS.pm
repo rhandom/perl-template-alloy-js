@@ -413,17 +413,18 @@ sub compile_js_FOR {
     local $self->{'_in_loop'} = 'FOREACH';
     my $code = $self->compile_tree_js($node->[4], "$indent$INDENT");
 
-    $$str_ref .= "\n${indent}var old_loop = \$_vars.loop;
+    $$str_ref .= "
+${indent}var old_loop = \$_vars.loop;
+${indent}var err;
 ${indent}try {
 ${indent}var loop = ".$self->compile_expr_js($items, $indent).";
 ${indent}if (loop == null) loop = [];
 ${indent}if (!loop.get_first) loop = new alloy.iterator(loop);
 ${indent}\$_vars.loop = loop;";
-#    if (! defined $name) {
-#        $$str_ref .= "
-#${indent}var swap = $_vars;
-#${indent}local \$self->{'_vars'} = my \$copy = {%\$swap};";
-#    }
+    if (! defined $name) {
+        $$str_ref .= "
+${indent}alloy.saveScope();";
+    }
 
     $$str_ref .= "
 ${indent}ref = loop.get_first();
@@ -432,9 +433,11 @@ ${indent}var error = ref[1];
 ${indent}while (!error) {";
 
     if (defined $name) {
-        $$str_ref .= "\n$indent${INDENT}alloy.set_variable(".$json->encode($name).", val);";
+        $$str_ref .= "
+$indent${INDENT}alloy.set_variable(".$json->encode($name).", val);";
     } else {
-#        $$str_ref .= "\n$indent${INDENT}\@\$copy{keys %\$var} = values %\$var if ref(\$var) eq 'HASH';";
+        $$str_ref .= "
+$indent${INDENT}if (val && typeof val == 'object' && !(val instanceof Array || val instanceof RegExp)) for (var k in val) alloy.set_variable(k, val[k]);";
     }
 
     $$str_ref .= "$code
@@ -442,7 +445,14 @@ ${indent}${INDENT}ref = loop.get_next();
 ${indent}${INDENT}val   = ref[0];
 ${indent}${INDENT}error = ref[1];
 ${indent}${INDENT}}
-${indent}} catch (e) { throw 'Got some sort of error '+e; }";
+${indent}} catch (e) { err = e }";
+    if (!defined $name) {
+        $$str_ref .= "
+${indent}alloy.restoreScope();";
+    }
+    $$str_ref .= "
+${indent}\$_vars.loop = old_loop;
+${indent}if (err != null) throw 'Got some sort of error '+err;";
     return;
 }
 
@@ -481,7 +491,7 @@ sub compile_js_INSERT {
 sub compile_js_LAST {
     my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found LAST while not in FOR, FOREACH or WHILE";
-    $$str_ref .= "\n${indent}last $type;";
+    $$str_ref .= "\n${indent}break;"; #last $type;";
     return;
 }
 
@@ -576,8 +586,8 @@ sub compile_js_META {
 sub compile_js_NEXT {
     my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
-    $$str_ref .= "\n${indent}(\$var, \$error) = \$loop->get_next;" if $type eq 'FOREACH';
-    $$str_ref .= "\n${indent}next $type;";
+    $$str_ref .= "\n${indent}ref = loop.get_next(); val = ref[0]; error = ref[1];" if $type eq 'FOREACH';
+    $$str_ref .= "\n${indent}continue;"; #next $type;";
     return;
 }
 
