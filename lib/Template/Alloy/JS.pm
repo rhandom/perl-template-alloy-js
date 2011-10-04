@@ -153,12 +153,10 @@ sub load_js {
         local $js_self = $self;
         $ctx->bind('$_vars' => $self->{'_vars'});
         $ctx->bind('$_env'  => {
-            LOWER_CASE_VAR_FALLBACK => $self->{'LOWER_CASE_VAR_FALLBACK'},
-            NO_INCLUDES             => $self->{'NO_INCLUDES'},
-            QR_PRIVATE              => "^[_.]", #$Template::Alloy::QR_PRIVATE"});
-            TRIM                    => $self->{'TRIM'},
-            UNDEFINED_GET           => $self->{'UNDEFINED_GET'} ? 1 : 0,
-            VMETHOD_FUNCTIONS       => $self->{'VMETHOD_FUNCTIONS'},
+            QR_PRIVATE        => $Template::Alloy::QR_PRIVATE ? "^[_.]" : 0,
+            SYNTAX            => $self->{'SYNTAX'},
+            VMETHOD_FUNCTIONS => $self->{'VMETHOD_FUNCTIONS'},
+            map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES TRIM UNDEFINED_GET),
         });
         my $out = $callback->([$$out_ref]);
         $$out_ref = $out->[0];
@@ -502,22 +500,34 @@ sub compile_js_LOOP {
     my ($self, $node, $str_ref, $indent) = @_;
     my $ref = $node->[3];
     $ref = [$ref, 0] if ! ref $ref;
+    local $self->{'_loop_index'} = ($self->{'_loop_index'} || 0) + 1;
+    my $i = $self->{'_loop_index'};
 
     $$str_ref .= "
-${indent}\$var = ".$self->compile_expr($ref, $indent).";
-${indent}if (\$var) {
-${indent}${INDENT}my \$global = ! \$self->{'SYNTAX'} || \$self->{'SYNTAX'} ne 'ht' || \$self->{'GLOBAL_VARS'};
-${indent}${INDENT}my \$items  = ref(\$var) eq 'ARRAY' ? \$var : ref(\$var) eq 'HASH' ? [\$var] : [];
-${indent}${INDENT}my \$i = 0;
-${indent}${INDENT}for my \$ref (\@\$items) {
-${indent}${INDENT}${INDENT}\$self->throw('loop', 'Scalar value used in LOOP') if \$ref && ref(\$ref) ne 'HASH';
-${indent}${INDENT}${INDENT}local \$self->{'_vars'} = (! \$global) ? (\$ref || {}) : (ref(\$ref) eq 'HASH') ? {%{ \$self->{'_vars'} }, %\$ref} : \$self->{'_vars'};
-${indent}${INDENT}${INDENT}\@{ \$self->{'_vars'} }{qw(__counter__ __first__ __last__ __inner__ __odd__)}
-${indent}${INDENT}${INDENT}${INDENT}= (++\$i, (\$i == 1 ? 1 : 0), (\$i == \@\$items ? 1 : 0), (\$i == 1 || \$i == \@\$items ? 0 : 1), (\$i % 2) ? 1 : 0)
-${indent}${INDENT}${INDENT}${INDENT}${INDENT}if \$self->{'LOOP_CONTEXT_VARS'} && ! \$Template::Alloy::QR_PRIVATE;"
-.$self->compile_tree($node->[4], "$indent$INDENT$INDENT")."
+${indent}ref = ".$self->compile_expr_js($ref, $indent).";
+${indent}if (ref) {
+${indent}${INDENT}var global${i} = !\$_env.SYNTAX || \$_env.SYNTAX != 'ht' || \$_env.GLOBAL_VARS;
+${indent}${INDENT}var old_vars${i} = \$_vars;
+${indent}${INDENT}var items${i}  = ref instanceof Array ? ref : typeof ref == 'object' ? [ref] : [];
+${indent}${INDENT}var err${i}; try {
+${indent}${INDENT}for (var i${i} = 0, I${i} = items${i}.length-1; i${i} <= I${i}; i${i}++) {
+${indent}${INDENT}${INDENT}ref = items${i}[i${i}];
+${indent}${INDENT}${INDENT}if (typeof ref != 'object') throw 'loop - Scalar value used in LOOP';
+${indent}${INDENT}${INDENT}if (! global${i}) \$_vars = ref;
+${indent}${INDENT}${INDENT}else for (var i in ref) alloy.set_variable(i, ref[i]);
+${indent}${INDENT}${INDENT}if (\$_env.LOOP_CONTEXT_VARS && ! \$_env.QR_PRIVATE) {
+${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__counter__', i${i}+1);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__first__', i${i}==0?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__last__', i${i}==I${i}?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__inner__', i${i}>0&&i${i}<I${i}?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__odd__', (i${i}%2)?0:1);
+${indent}${INDENT}${INDENT}}"
+.$self->compile_tree_js($node->[4], "$indent$INDENT$INDENT")."
 
 ${indent}${INDENT}}
+${indent}${INDENT}} catch (e) { err${i} = e }
+${indent}${INDENT}if (!global${i}) \$_vars = old_vars${i};
+${indent}${INDENT}if (err${i} != null) throw err;
 ${indent}}";
 }
 
