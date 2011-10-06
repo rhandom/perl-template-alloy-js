@@ -145,7 +145,7 @@ sub load_js {
 
     my $callback = $ctx->eval(qq{
         alloy.register_template('$doc->{_filename}',$$js);
-        (function (out_ref) { return alloy.process('$doc->{_filename}', out_ref) })
+        (function (out_ref) { return alloy.process('$doc->{_filename}', out_ref, {}, 1) })
     }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{_filename}: $@");
 
     return {code => sub {
@@ -156,6 +156,7 @@ sub load_js {
             QR_PRIVATE        => $Template::Alloy::QR_PRIVATE ? "^[_.]" : 0,
             SYNTAX            => $self->{'SYNTAX'},
             VMETHOD_FUNCTIONS => $self->{'VMETHOD_FUNCTIONS'},
+            WHILE_MAX         => $Template::Alloy::WHILE_MAX,
             map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES TRIM UNDEFINED_GET),
         });
         my $out = $callback->([$$out_ref]);
@@ -189,8 +190,6 @@ var code   = function (alloy, out_ref, args) {"
 .($self->{'_blocks'} ? "\n${INDENT}alloy.setBlocks(blocks);" : "")
 .($self->{'_meta'}   ? "\n${INDENT}alloy.setMeta(meta);" : "")
 ."$code
-
-${INDENT}return out_ref;
 };
 
 return {
@@ -453,7 +452,7 @@ ${indent}alloy.restoreScope();";
     }
     $$str_ref .= "
 ${indent}\$_vars.loop = old_loop${i};
-${indent}if (err != null) throw 'Got some sort of error '+err;";
+${indent}if (err != null) throw err;";
     return;
 }
 
@@ -661,11 +660,10 @@ sub compile_js_RETURN {
 
     if (defined($node->[3])) {
         $$str_ref .= "
-${indent}\$var = {return_val => ".$self->compile_expr($node->[3])."};
-${indent}\$self->throw('return', \$var);";
+${indent}throw (new alloy.exception('return', {return_val => ".$self->compile_expr_js($node->[3])."}));";
     } else {
         $$str_ref .= "
-${indent}\$self->throw('return', undef);";
+${indent}throw (new alloy.exception('return',null));";
     }
 }
 
@@ -719,7 +717,7 @@ ${indent}alloy.set_variable(".$json->encode($set).", ref)";
 sub compile_js_STOP {
     my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
-${indent}\$self->throw('stop', 'Control Exception');";
+${indent}throw (new alloy.exception('stop', 'Control Exception'));";
 }
 
 sub compile_js_SWITCH {
@@ -928,13 +926,15 @@ sub compile_js_WHILE {
     my ($self, $node, $str_ref, $indent) = @_;
 
     local $self->{'_in_loop'} = 'WHILE';
-    my $code = $self->compile_tree($node->[4], "$indent$INDENT");
+    local $self->{'_loop_index'} = ($self->{'_loop_index'} || 0) + 1;
+    my $i = $self->{'_loop_index'};
 
     $$str_ref .= "
-${indent}my \$count = \$Template::Alloy::WHILE_MAX;
-${indent}WHILE: while (--\$count > 0) {
-${indent}my \$var = ".$self->compile_expr($node->[3], $indent).";
-${indent}last if ! \$var;$code
+${indent}var count${i} = \$_env.WHILE_MAX;
+${indent}while (--count${i} > 0) {
+${indent}${INDENT}var ref = ".$self->compile_expr_js($node->[3], $indent).";
+${indent}${INDENT}if (! ref) break;"
+.$self->compile_tree_js($node->[4], "$indent$INDENT")."
 ${indent}}";
     return;
 }
