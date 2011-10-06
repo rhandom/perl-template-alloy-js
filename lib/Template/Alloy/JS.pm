@@ -682,16 +682,15 @@ sub compile_js_SET {
         $$str_ref .= "\n${indent}ref = ";
 
         if (! defined $val) { # not defined
-            $$str_ref .= 'undefined';
+            $$str_ref .= 'null';
         } elsif ($node->[4] && $val == $node->[4]) { # a captured directive
             my $sub_tree = $node->[4];
             $sub_tree = $sub_tree->[0]->[4] if $sub_tree->[0] && $sub_tree->[0]->[0] eq 'BLOCK';
             my $code = $self->compile_tree_js($sub_tree, "$indent$INDENT");
-            $$str_ref .= "${indent}do {
-${indent}${INDENT}my \$out = '';
-${indent}${INDENT}my \$out_ref = \\\$out;$code
-${indent}${INDENT}\$out;
-${indent}}"
+            $$str_ref .= "${indent}(function () {
+${indent}${INDENT}var out_ref = [''];$code
+${indent}${INDENT}return out_ref[0];
+${indent}})();";
         } else { # normal var
             $$str_ref .= $self->compile_expr_js($val, $indent);
         }
@@ -723,35 +722,58 @@ ${indent}throw (new alloy.exception('stop', 'Control Exception'));";
 sub compile_js_SWITCH {
     my ($self, $node, $str_ref, $indent) = @_;
 
-    $$str_ref .= "
-${indent}\$var = ".$self->compile_expr($node->[3], $indent).";";
-
+    my $top = $node;
+    my @cases;
     my $default;
-    my $i = 0;
+    my $literal = 1;
     while ($node = $node->[5]) { # CASES
         if (! defined $node->[3]) {
             $default = $node;
             next;
         }
-
-        $$str_ref .= _node_info($self, $node, $indent);
-        $$str_ref .= "\n$indent" .($i++ ? "} els" : ""). "if (do {
-${indent}${INDENT}no warnings;
-${indent}${INDENT}my \$var2 = ".$self->compile_expr($node->[3], "$indent$INDENT").";
-${indent}${INDENT}scalar grep {\$_ eq \$var} (UNIVERSAL::isa(\$var2, 'ARRAY') ? \@\$var2 : \$var2);
-${indent}${INDENT}}) {
-${indent}${INDENT}my \$var;";
-
-        $$str_ref .= $self->compile_tree($node->[4], "$indent$INDENT");
+        push @cases, $node;
+        $literal = 0 if ref $node->[3];
     }
 
-    if ($default) {
-        $$str_ref .= _node_info($self, $default, $indent);
-        $$str_ref .= "\n$indent" .($i++ ? "} else {" : "if (1) {");
-        $$str_ref .= $self->compile_tree($default->[4], "$indent$INDENT");
+    if ($literal) {
+        $$str_ref .= "
+${indent}ref = ".$self->compile_expr_js($top->[3], $indent)."
+${indent}switch (ref) {";
+        for my $node (@cases) {
+            $$str_ref .= _node_info($self, $node, "$indent$INDENT");
+            $$str_ref .= "\n${indent}${INDENT}case ".$self->compile_expr_js($node->[3]).":\n";
+            $$str_ref .= $self->compile_tree_js($node->[4], "$indent$INDENT$INDENT");
+            $$str_ref .= "\n${indent}${INDENT}${INDENT}break;";
+        }
+        if ($default) {
+            $$str_ref .= _node_info($self, $default, "$indent$INDENT");
+            $$str_ref .= "\n${indent}${INDENT}default:";
+            $$str_ref .= $self->compile_tree_js($default->[4], "$indent$INDENT");
+        }
+        $$str_ref .= "\n$indent}";
+    } else {
+        local $self->{'_loop_index'} = ($self->{'_loop_index'} || 0) + 1;
+        my $i = $self->{'_loop_index'};
+        my $j = 0;
+        $$str_ref .= "
+${indent}var switch${i} = ".$self->compile_expr_js($top->[3], $indent).";";
+        for my $node (@cases) {
+            $$str_ref .= _node_info($self, $node, "$indent$INDENT");
+            $$str_ref .= "\n$indent" .($j++ ? "} else " : ""). "if ((function () {
+${indent}${INDENT}var val = ".$self->compile_expr_js($node->[3], "$indent$INDENT").";
+${indent}${INDENT}if (!(val instanceof Array)) return switch${i} == val ? 1 : 0;
+${indent}${INDENT}for (var i = 0; i < val.length; i++) if (val[i] == switch${i}) return 1;
+${indent}${INDENT}})()) {
+${indent}${INDENT}var ref;";
+            $$str_ref .= $self->compile_tree_js($node->[4], "$indent$INDENT");
+        }
+        if ($default) {
+            $$str_ref .= _node_info($self, $default, "$indent$INDENT");
+            $$str_ref .= "\n$indent" .($j++ ? "} else {" : "if (1) {");
+            $$str_ref .= $self->compile_tree_js($default->[4], "$indent$INDENT");
+        }
+        $$str_ref .= "\n$indent}" if $j;
     }
-
-    $$str_ref .= "\n$indent}" if $i;
 
     return;
 }
@@ -765,7 +787,7 @@ sub compile_js_THROW {
     push @args, $named if ! _is_empty_named_args($named); # add named args back on at end - if there are some
 
     $$str_ref .= "
-${indent}\$self->throw(".$self->compile_expr($name, $indent).", [".join(", ", map{$self->compile_expr($_, $indent)} @args)."]);";
+${indent}alloy.throw(".$self->compile_expr_js($name, $indent).", [".join(", ", map{$self->compile_expr_js($_, $indent)} @args)."]);";
     return;
 }
 
@@ -774,71 +796,69 @@ sub compile_js_TRY {
     my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "
-${indent}do {
-${indent}my \$out = '';
-${indent}eval {
-${indent}${INDENT}my \$out_ref = \\\$out;"
-    . $self->compile_tree($node->[4], "$indent$INDENT") ."
-${indent}};
-${indent}my \$err = \$\@;
-${indent}\$\$out_ref .= \$out;
-${indent}if (\$err) {";
+${indent}(function () {
+${indent}var err;
+//${indent}var out_ref = [''];
+${indent}try {"
+    . $self->compile_tree_js($node->[4], "$indent$INDENT") ."
+${indent}} catch (e) { err = e };
+//${indent}\$\$out_ref .= \$out;
+${indent}if (err != null) {";
 
     my $final;
-    my $i = 0;
     my $catches_str = '';
     my @names;
+    local $self->{'_loop_index'} = ($self->{'_loop_index'} || 0) + 1;
+    my $i = $self->{'_loop_index'};
     while ($node = $node->[5]) { # CATCHES
         if ($node->[0] eq 'FINAL') {
             $final = $node;
             next;
         }
         $catches_str .= _node_info($self, $node, "$indent$INDENT");
-        $catches_str .= "\n${indent}${INDENT}} elsif (\$index == ".(scalar @names).") {";
-        $catches_str .= $self->compile_tree($node->[4], "$indent$INDENT$INDENT");
+        $catches_str .= "\n${indent}${INDENT}} else if (index${i} == ".(scalar @names).") {";
+        $catches_str .= $self->compile_tree_js($node->[4], "$indent$INDENT$INDENT");
         push @names, $node->[3];
     }
     if (@names) {
         $$str_ref .= "
-${indent}${INDENT}\$err = \$self->exception('undef', \$err) if ! UNIVERSAL::can(\$err, 'type');
-${indent}${INDENT}my \$type = \$err->type;
-${indent}${INDENT}die \$err if \$type =~ /stop|return/;
-${indent}${INDENT}local \$self->{'_vars'}->{'error'} = \$err;
-${indent}${INDENT}local \$self->{'_vars'}->{'e'}     = \$err;
-
-${indent}${INDENT}my \$index;
-${indent}${INDENT}my \@names = (";
-        $i = 0;
-        foreach $i (0 .. $#names) {
-            if (defined $names[$i]) {
-                $$str_ref .= "\n${indent}${INDENT}${INDENT}scalar(".$self->compile_expr($names[$i], "$indent$INDENT$INDENT")."), # $i;";
+${indent}${INDENT}if (typeof err != 'object' || ! err.type) err = new alloy.exception('undef', err);
+${indent}${INDENT}if (err.type == 'stop' || err.type == 'return') throw err;
+${indent}${INDENT}var old_error${i} = \$_vars.error; \$_vars.error = err;
+${indent}${INDENT}var old_e${i} = \$_vars.e; \$_vars.e = err;
+${indent}${INDENT}var index${i};
+${indent}${INDENT}var names${i} = [";
+        my $j = 0;
+        foreach $j (0 .. $#names) {
+            if (defined $names[$j]) {
+                $$str_ref .= "\n${indent}${INDENT}${INDENT}".$self->compile_expr_js($names[$j], "$indent$INDENT$INDENT").", // $j;";
             } else {
-                $$str_ref .= "\n${indent}${INDENT}${INDENT}undef, # $i";
+                $$str_ref .= "\n${indent}${INDENT}${INDENT}null, // $j";
             }
         }
         $$str_ref .= "
-${indent}${INDENT});
-${indent}${INDENT}for my \$i (0 .. \$#names) {
-${indent}${INDENT}${INDENT}my \$name = (! defined(\$names[\$i]) || lc(\$names[\$i]) eq 'default') ? '' : \$names[\$i];
-${indent}${INDENT}${INDENT}\$index = \$i if \$type =~ m{^ \\Q\$name\\E \\b}x && (! defined(\$index) || length(\$names[\$index]) < length(\$name));
+${indent}${INDENT}];
+${indent}${INDENT}for (var i = 0, I = names${i}.length; i < I; i++) {
+${indent}${INDENT}${INDENT}var name = (names${i}[i] == null || (''+names${i}[i]).toLowerCase() == 'default') ? '' : ''+names${i}[i];
+${indent}${INDENT}${INDENT}if ((index${i} == null || name.length > (''+names${i}[index${i}]).length) && (new RegExp(name+'\\\\b')).test(err.type))  index${i} = i;
 ${indent}${INDENT}}
-${indent}${INDENT}if (! defined \$index) {
-${indent}${INDENT}${INDENT}die \$err;"
+${indent}${INDENT}if (index${i} == null) {
+${indent}${INDENT}${INDENT}throw err;"
 .$catches_str."
 ${indent}${INDENT}}";
 
     } else {
         $$str_ref .= "
-${indent}\$self->throw('throw', 'Missing CATCH block');";
+${indent}throw (new alloy.exception('throw', 'Missing CATCH block'));";
     }
     $$str_ref .= "
 ${indent}}";
     if ($final) {
         $$str_ref .= _node_info($self, $final, $indent);
-        $$str_ref .= $self->compile_tree($final->[4], "$indent");
+        $$str_ref .= $self->compile_tree_js($final->[4], $indent);
     }
     $$str_ref .="
-${indent}};";
+${indent}})();";
 
     return;
 }
