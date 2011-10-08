@@ -264,9 +264,9 @@ ${indent}}";
     return $code;
 }
 
-sub compile_expr_js { _compile_expr_js($_[1]) }
+sub compile_expr_js { _compile_expr_js($_[0],$_[1]) }
 sub _compile_expr_js {
-    my ($v,$nctx,$sctx) = @_;
+    my ($s,$v,$nctx,$sctx) = @_;
     if (! ref $v) {
         return $v*1 if $nctx;
         $v .= '' if $sctx; # force numbers to str
@@ -274,58 +274,58 @@ sub _compile_expr_js {
     }
     my $name = $v->[0];
     my $args = $v->[1];
-    return _encode($name,1) if @$v == 2 && ref($name) && !defined($name->[0]);
-    my @var = (ref($name) ? _encode($name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($_)} @$args).']' : 0);
+    return _encode($s,$name,1) if @$v == 2 && ref($name) && !defined($name->[0]) && (! $args || $name->[1] ne '->');
+    my @var = (ref($name) ? _encode($s,$name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($s,$_)} @$args).']' : 0);
     my $i = 2;
     while ($i < @$v) {
         my $dot = $v->[$i++];
         $name = $v->[$i++];
         $args = $v->[$i++];
-        push @var, "'$dot'", ref($name) ? _encode($name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($_)} @$args).']' : 0;
+        push @var, "'$dot'", ref($name) ? _encode($s,$name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($s,$_)} @$args).']' : 0;
     }
     return 'alloy.play_expr(['.join(',',@var).']'.($nctx?',{},true':'').')';
 }
 sub _encode {
-    my $v = shift;
+    my ($s,$v) = @_;
     return $json->encode($v) if ! ref $v;
-    return '['.join(',', map {_encode($_)} @$v).']' if defined $v->[0];
+    return '['.join(',', map {_encode($s,$_)} @$v).']' if defined $v->[0];
     my $op = $v->[1];
-    my $n = ($op eq '~' || $op eq '_') ? '(""+'.join('+',map{_compile_expr_js($_)}@$v[2..$#$v]).")"
-        : ($op eq '-')  ? (@$v==3 ? '-'._compile_expr_js($v->[2],1) : '('._compile_expr_js($v->[2],1).' - '._compile_expr_js($v->[3],1).')')
-        : ($op eq '+')  ? '('._compile_expr_js($v->[2],1).'+'._compile_expr_js($v->[3],1).')'
-        : ($op eq '*')  ? '('._compile_expr_js($v->[2],1).'*'._compile_expr_js($v->[3],1).')'
-        : ($op eq '/')  ? '('._compile_expr_js($v->[2],1).'/'._compile_expr_js($v->[3],1).')'
-        : ($op eq 'div')? 'parseInt('._compile_expr_js($v->[2],1).'/'._compile_expr_js($v->[3],1).')'
-        : ($op eq '**') ? 'Math.pow('._compile_expr_js($v->[2],1).','._compile_expr_js($v->[3],1).')'
-        : ($op eq '++') ? '(function(){var v1='._compile_expr_js($v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1+1); return v1'.($v->[3]?'':'+1').'})()'
-        : ($op eq '--') ? '(function(){var v1='._compile_expr_js($v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1-1); return v1'.($v->[3]?'':'-1').'})()'
-        : ($op eq '%')  ? '('._compile_expr_js($v->[2],1).'%'._compile_expr_js($v->[3],1).')'
-        : ($op eq '>')  ? '('._compile_expr_js($v->[2],1).'>' ._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq '>=') ? '('._compile_expr_js($v->[2],1).'>='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq '<')  ? '('._compile_expr_js($v->[2],1).'<' ._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq '<=') ? '('._compile_expr_js($v->[2],1).'<='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq '==') ? '('._compile_expr_js($v->[2],1).'=='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq '!=') ? '('._compile_expr_js($v->[2],1).'!='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq 'gt') ? '(""+'._compile_expr_js($v->[2]).'>' ._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq 'ge') ? '(""+'._compile_expr_js($v->[2]).'>='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq 'lt') ? '(""+'._compile_expr_js($v->[2]).'<' ._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq 'le') ? '(""+'._compile_expr_js($v->[2]).'<='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq 'eq') ? '(""+'._compile_expr_js($v->[2]).'=='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq 'ne') ? '(""+'._compile_expr_js($v->[2]).'!='._compile_expr_js($v->[3]).'?1:"")'
-        : ($op eq '?')  ? '('._compile_expr_js($v->[2]).'?'._compile_expr_js($v->[3]).':'._compile_expr_js($v->[4]).')'
-        : ($op eq '<=>')? '(function(){var v1='._compile_expr_js($v->[2],1).';var v2='._compile_expr_js($v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
-        : ($op eq 'cmp')? '(function(){var v1=""+'._compile_expr_js($v->[2]).';var v2='._compile_expr_js($v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
-        : ($op eq '=')  ? 'alloy.set_variable('.$json->encode($v->[2]).','._compile_expr_js($v->[3]).')'
-        : ($op eq 'qr') ? '(new RegExp('._compile_expr_js($v->[2]).','._compile_expr_js($v->[3]).'))'
-        : ($op eq '!' || $op eq 'not' || $op eq 'NOT') ? '!'._compile_expr_js($v->[2])
-        : ($op eq '&&' || $op eq 'and') ? '('._compile_expr_js($v->[2]).'&&'._compile_expr_js($v->[3]).')'
-        : ($op eq '||' || $op eq 'or')  ? '('._compile_expr_js($v->[2]).'||'._compile_expr_js($v->[3]).')'
-        : ($op eq '//' || $op eq 'err' || $op eq 'ERR') ? '(function(){var v1='._compile_expr_js($v->[2]).'; return v1==null ? '._compile_expr_js($v->[3]).' : v1})()'
+    my $n = ($op eq '~' || $op eq '_') ? '(""+'.join('+',map{_compile_expr_js($s,$_)}@$v[2..$#$v]).")"
+        : ($op eq '-')  ? (@$v==3 ? '-'._compile_expr_js($s,$v->[2],1) : '('._compile_expr_js($s,$v->[2],1).' - '._compile_expr_js($s,$v->[3],1).')')
+        : ($op eq '+')  ? '('._compile_expr_js($s,$v->[2],1).'+'._compile_expr_js($s,$v->[3],1).')'
+        : ($op eq '*')  ? '('._compile_expr_js($s,$v->[2],1).'*'._compile_expr_js($s,$v->[3],1).')'
+        : ($op eq '/')  ? '('._compile_expr_js($s,$v->[2],1).'/'._compile_expr_js($s,$v->[3],1).')'
+        : ($op eq 'div')? 'parseInt('._compile_expr_js($s,$v->[2],1).'/'._compile_expr_js($s,$v->[3],1).')'
+        : ($op eq '**') ? 'Math.pow('._compile_expr_js($s,$v->[2],1).','._compile_expr_js($s,$v->[3],1).')'
+        : ($op eq '++') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1+1); return v1'.($v->[3]?'':'+1').'})()'
+        : ($op eq '--') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1-1); return v1'.($v->[3]?'':'-1').'})()'
+        : ($op eq '%')  ? '('._compile_expr_js($s,$v->[2],1).'%'._compile_expr_js($s,$v->[3],1).')'
+        : ($op eq '>')  ? '('._compile_expr_js($s,$v->[2],1).'>' ._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '>=') ? '('._compile_expr_js($s,$v->[2],1).'>='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '<')  ? '('._compile_expr_js($s,$v->[2],1).'<' ._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '<=') ? '('._compile_expr_js($s,$v->[2],1).'<='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '==') ? '('._compile_expr_js($s,$v->[2],1).'=='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '!=') ? '('._compile_expr_js($s,$v->[2],1).'!='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq 'gt') ? '(""+'._compile_expr_js($s,$v->[2]).'>' ._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq 'ge') ? '(""+'._compile_expr_js($s,$v->[2]).'>='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq 'lt') ? '(""+'._compile_expr_js($s,$v->[2]).'<' ._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq 'le') ? '(""+'._compile_expr_js($s,$v->[2]).'<='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq 'eq') ? '(""+'._compile_expr_js($s,$v->[2]).'=='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq 'ne') ? '(""+'._compile_expr_js($s,$v->[2]).'!='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '?')  ? '('._compile_expr_js($s,$v->[2]).'?'._compile_expr_js($s,$v->[3]).':'._compile_expr_js($s,$v->[4]).')'
+        : ($op eq '<=>')? '(function(){var v1='._compile_expr_js($s,$v->[2],1).';var v2='._compile_expr_js($s,$v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
+        : ($op eq 'cmp')? '(function(){var v1=""+'._compile_expr_js($s,$v->[2]).';var v2='._compile_expr_js($s,$v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
+        : ($op eq '=')  ? 'alloy.set_variable('.$json->encode($v->[2]).','._compile_expr_js($s,$v->[3]).')'
+        : ($op eq 'qr') ? '(new RegExp('._compile_expr_js($s,$v->[2]).','._compile_expr_js($s,$v->[3]).'))'
+        : ($op eq '!' || $op eq 'not' || $op eq 'NOT') ? '!'._compile_expr_js($s,$v->[2])
+        : ($op eq '&&' || $op eq 'and') ? '('._compile_expr_js($s,$v->[2]).'&&'._compile_expr_js($s,$v->[3]).')'
+        : ($op eq '||' || $op eq 'or')  ? '('._compile_expr_js($s,$v->[2]).'||'._compile_expr_js($s,$v->[3]).')'
+        : ($op eq '//' || $op eq 'err' || $op eq 'ERR') ? '(function(){var v1='._compile_expr_js($s,$v->[2]).'; return v1==null ? '._compile_expr_js($s,$v->[3]).' : v1})()'
         : ($op eq '{}') ? do {
             my @e;
             my $ok=1;
             for (my $i = 2; $i < @$v; $i+=2) {
-                push @e, [my $k = _compile_expr_js($v->[$i],0,1), _compile_expr_js($v->[$i+1])];
+                push @e, [my $k = _compile_expr_js($s,$v->[$i],0,1), _compile_expr_js($s,$v->[$i+1])];
                 $ok = 0 if $k !~ /^\"/;
             }
             $ok ? '{'.join(',', map {"$_->[0]:$_->[1]"} @e).'}'
@@ -337,16 +337,20 @@ sub _encode {
             for my $n (@$v[2..$#$v]) {
                 if (!ref($n)) { push @e, $json->encode($n) }
                 elsif (ref($n->[0])&&!$n->[0]->[0]) {
-                    if ($n->[0]->[1]ne'..') { push @e, _compile_expr_js($n,1) }
+                    if ($n->[0]->[1]ne'..') { push @e, _compile_expr_js($s,$n,1) }
                     elsif (!ref($n->[0]->[2]) && !ref($n->[0]->[3])) { push @e, map{$json->encode($_)} $n->[0]->[2]..$n->[0]->[3] }
-                    else { push @e, [_compile_expr_js($n->[0]->[2],1), _compile_expr_js($n->[0]->[3],1)]; $ok = 0 }
-                } else { push @e, _compile_expr_js($n) }
+                    else { push @e, [_compile_expr_js($s,$n->[0]->[2],1), _compile_expr_js($s,$n->[0]->[3],1)]; $ok = 0 }
+                } else { push @e, _compile_expr_js($s,$n) }
             }
             $ok ? '['.join(',', @e).']'
                 : '(function () { var a = [];'.join(' ',map{!ref($_) ? "a.push($_);" : "for(var i=$_->[0];i<=$_->[1];i++) a.push(i);"}@e).' return a })()';
         }
+        : ($op eq '->') ? 'function () { return '._macro_sub_js($s,$v->[2],$v->[3],'  ').' }'
+            #my $code = $self->_macro_sub($tree->[2], $tree->[3]);
+            #return sub { $code }; # do the double sub dance
+            #die;
         : die "Unimplemented Op (@$v)";
-    return $_[0] ? $n : "[null,$n]";
+    return $_[2] ? $n : "[null,$n]";
 }
 
 sub _compile_defer_to_play {
@@ -395,7 +399,7 @@ ${INDENT}},";
 
 sub compile_js_CALL {
     my ($self, $node, $str_ref, $indent) = @_;
-    $$str_ref .= "\n${indent}".$self->compile_expr_js($node->[3], $indent).";";
+    $$str_ref .= "\n${indent}"._compile_expr_js($self, $node->[3]).";";
     return;
 }
 
@@ -440,9 +444,15 @@ sub compile_js_DUMP {
 
 sub compile_js_GET {
     my ($self, $node, $str_ref, $indent) = @_;
-    $$str_ref .= "
-${indent}ref = ".$self->compile_expr_js($node->[3], $indent).";
+    my $v = _compile_expr_js($self, $node->[3]);
+    if ($v =~ /^alloy\./) {
+        $$str_ref .= "
+${indent}ref = $v;
 ${indent}out_ref[0] += (ref != null) ? ref : alloy.undefined_get(".$json->encode($node->[3]).");";
+    } else {
+        $$str_ref .= "
+${indent}out_ref[0] += $v;";
+    }
     return;
 }
 
@@ -625,11 +635,17 @@ ${indent}alloy.set_variable(".$json->encode($name).", null);";
         $sub_tree = $sub_tree->[0]->[4];
     }
 
+    $$str_ref .= "
+alloy.set_variable(".$json->encode($name).", "._macro_sub_js($self, $args, $sub_tree, $indent).");";
+    return;
+}
+
+sub _macro_sub_js {
+    my ($self, $args, $sub_tree, $indent) = @_;
+
     my $code = $self->compile_tree_js($sub_tree, "$indent$INDENT");
 
-    $$str_ref .= "
-${indent}(function () {
-${indent}var val = function () {
+    my $str = "function () {
 ${indent}${INDENT}if (!alloy._macro_recurse) alloy._macro_recurse = 0;
 ${indent}${INDENT}var err; var max = \$_env.MAX_MACRO_RECURSE;
 ${indent}${INDENT}if (alloy._macro_recurse + 1 > max) alloy.throw('macro_recurse', 'MAX_MACRO_RECURSE '+max+' reached');
@@ -639,12 +655,10 @@ ${indent}${INDENT}try {";
 
     my $i = 0;
     foreach my $var (@$args) {
-        $$str_ref .= "
-${indent}${INDENT}alloy.set_variable(";
-        $$str_ref .= $json->encode($var);
-        $$str_ref .= ", arguments[".$i++."]);";
+        $str .= "
+${indent}${INDENT}alloy.set_variable(".$json->encode($var).", arguments[".$i++."]);";
     }
-    $$str_ref .= "
+    $str .= "
 ${indent}${INDENT}var named = ($i < arguments.length) ? arguments[arguments.length-1] : null;
 ${indent}${INDENT}if (named && typeof named == 'object' && !(named instanceof Array))
 ${indent}${INDENT}${INDENT}for (var k in named) alloy.set_variable([k, 0], named[k]);
@@ -654,12 +668,10 @@ ${indent}${INDENT}} catch (e) { err = e };
 ${indent}${INDENT}alloy.restoreScope();
 ${indent}${INDENT}alloy._macro_recurse--;
 ${indent}${INDENT}if (err != null) throw err;
-${indent}${INDENT}return out_ref[0];
-${indent}};
-${indent}alloy.set_variable(".$json->encode($name).", val);
-${indent}})();";
+${indent}${INDENT}return out_ref[0]
+${indent}}";
 
-    return;
+    return $str;
 }
 
 sub compile_js_META {
@@ -754,7 +766,7 @@ sub compile_js_SET {
         my ($op, $set, $val) = @$_;
 
         if ($self->{'_is_default'}) {
-            $$str_ref .= "\n${indent}if (! ".$self->compile_expr_js($set, $indent).") {";
+            $$str_ref .= "\n${indent}if (! "._compile_expr_js($self,$set).") {";
             $indent .= $INDENT;
         }
         $$str_ref .= "\n${indent}ref = ";
@@ -770,7 +782,7 @@ ${indent}${INDENT}var out_ref = [''];$code
 ${indent}${INDENT}return out_ref[0];
 ${indent}})();";
         } else { # normal var
-            $$str_ref .= $self->compile_expr_js($val, $indent);
+            $$str_ref .= _compile_expr_js($self, $val);
         }
 
         if ($Template::Alloy::OP_DISPATCH->{$op}) {
