@@ -230,7 +230,6 @@ sub compile_tree_js {
 
         # text nodes are just the bare text
         if (! ref $node) {
-            $node =~ s/([\'\\])/\\$1/g;
             $code .= "\n\n${indent}out_ref[0] += ".$json->encode($node).";";
             next;
         }
@@ -300,12 +299,12 @@ sub _encode {
         : ($op eq '++') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1+1); return v1'.($v->[3]?'':'+1').'})()'
         : ($op eq '--') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1-1); return v1'.($v->[3]?'':'-1').'})()'
         : ($op eq '%')  ? '('._compile_expr_js($s,$v->[2],1).'%'._compile_expr_js($s,$v->[3],1).')'
-        : ($op eq '>')  ? '('._compile_expr_js($s,$v->[2],1).'>' ._compile_expr_js($s,$v->[3]).'?1:"")'
-        : ($op eq '>=') ? '('._compile_expr_js($s,$v->[2],1).'>='._compile_expr_js($s,$v->[3]).'?1:"")'
-        : ($op eq '<')  ? '('._compile_expr_js($s,$v->[2],1).'<' ._compile_expr_js($s,$v->[3]).'?1:"")'
-        : ($op eq '<=') ? '('._compile_expr_js($s,$v->[2],1).'<='._compile_expr_js($s,$v->[3]).'?1:"")'
-        : ($op eq '==') ? '('._compile_expr_js($s,$v->[2],1).'=='._compile_expr_js($s,$v->[3]).'?1:"")'
-        : ($op eq '!=') ? '('._compile_expr_js($s,$v->[2],1).'!='._compile_expr_js($s,$v->[3]).'?1:"")'
+        : ($op eq '>')  ? '('._compile_expr_js($s,$v->[2],1).'>' ._compile_expr_js($s,$v->[3],1).'?1:"")'
+        : ($op eq '>=') ? '('._compile_expr_js($s,$v->[2],1).'>='._compile_expr_js($s,$v->[3],1).'?1:"")'
+        : ($op eq '<')  ? '('._compile_expr_js($s,$v->[2],1).'<' ._compile_expr_js($s,$v->[3],1).'?1:"")'
+        : ($op eq '<=') ? '('._compile_expr_js($s,$v->[2],1).'<='._compile_expr_js($s,$v->[3],1).'?1:"")'
+        : ($op eq '==') ? '('._compile_expr_js($s,$v->[2],1).'=='._compile_expr_js($s,$v->[3],1).'?1:"")'
+        : ($op eq '!=') ? '('._compile_expr_js($s,$v->[2],1).'!='._compile_expr_js($s,$v->[3],1).'?1:"")'
         : ($op eq 'gt') ? '(""+'._compile_expr_js($s,$v->[2]).'>' ._compile_expr_js($s,$v->[3]).'?1:"")'
         : ($op eq 'ge') ? '(""+'._compile_expr_js($s,$v->[2]).'>='._compile_expr_js($s,$v->[3]).'?1:"")'
         : ($op eq 'lt') ? '(""+'._compile_expr_js($s,$v->[2]).'<' ._compile_expr_js($s,$v->[3]).'?1:"")'
@@ -737,7 +736,7 @@ sub compile_js_PROCESS {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($args, @files) = @{ $node->[3] };
 $$str_ref .= "
-${indent}alloy.process_d(".$json->encode(\@files).",".$json->encode([@{$args->[0]}[2..$#{$args->[0]}]]).",'$node->[0]', out_ref);\n";
+${indent}alloy.process_d(".$json->encode(\@files).",[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);\n";
 }
 
 sub compile_js_RAWPERL {
