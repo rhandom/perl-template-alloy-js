@@ -159,7 +159,8 @@ sub load_js {
             VMETHOD_FUNCTIONS => $self->{'VMETHOD_FUNCTIONS'},
             WHILE_MAX         => $Template::Alloy::WHILE_MAX,
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
-            map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES TRIM UNDEFINED_GET),
+            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT)),
+            (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES TRIM UNDEFINED_GET)),
         });
         my $out = $callback->([$$out_ref]);
         $$out_ref = $out->[0];
@@ -236,13 +237,11 @@ sub compile_tree_js {
 
         if ($self->{'_debug_dirs'} && ! $self->{'_debug_off'}) {
             my $info = $self->node_info($node);
-            my ($file, $line, $text) = @{ $info }{qw(file line text)};
-            s/\'/\\\'/g foreach $file, $line, $text;
             $code .= "\n
-${indent}if (alloy._debug_dirs && ! alloy._debug_off) { // DEBUG
-${indent}${INDENT}var info = {'file': '$file', 'line': '$line', 'text': '$text'};
-${indent}${INDENT}var format = alloy._debug_format || alloy.DEBUG_FORMAT || \"\\n/* \\\$file line \\\$line : [% \\\$text %] */\\n\";
-${indent}${INDENT}out_ref[0] += (''+format).replace(/\\\$(file|line|text)/, function (m, one) { info[one] }, 1);
+${indent}if (\$_env._debug_dirs && ! \$_env._debug_off) { // DEBUG
+${indent}${INDENT}var info = ".$json->encode($info).";
+${indent}${INDENT}var format = \$_env._debug_format || \$_env.DEBUG_FORMAT || \"\\n## \\\$file line \\\$line : [% \\\$text %] ##\\n\";
+${indent}${INDENT}out_ref[0] += (''+format).replace(/\\\$(file|line|text)/g, function (m, one) { return info[one] });
 ${indent}}";
         }
 
@@ -419,13 +418,11 @@ sub compile_js_DEBUG {
     my $text = $node->[3]->[0];
 
     if ($text eq 'on') {
-        $$str_ref .= "\n${indent}delete \$self->{'_debug_off'};";
+        $$str_ref .= "\n${indent}delete \$_env._debug_off;";
     } elsif ($text eq 'off') {
-        $$str_ref .= "\n${indent}\$self->{'_debug_off'} = 1;";
+        $$str_ref .= "\n${indent}\$_env._debug_off = 1;";
     } elsif ($text eq 'format') {
-        my $format = $node->[3]->[1];
-        $format =~ s/\'/\\\'/g;
-        $$str_ref .= "\n${indent}\$self->{'_debug_format'} = '$format';";
+        $$str_ref .= "\n${indent}\$_env._debug_format = ".$json->encode($node->[3]->[1]).";";
     }
     return;
 }
