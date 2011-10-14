@@ -647,6 +647,7 @@ ${indent}${INDENT}var err; var max = \$_env.MAX_MACRO_RECURSE;
 ${indent}${INDENT}if (alloy._macro_recurse + 1 > max) alloy.throw('macro_recurse', 'MAX_MACRO_RECURSE '+max+' reached');
 ${indent}${INDENT}alloy._macro_recurse++;
 ${indent}${INDENT}alloy.saveScope();
+${indent}${INDENT}var out_ref = [''];
 ${indent}${INDENT}try {";
 
     my $i = 0;
@@ -658,8 +659,7 @@ ${indent}${INDENT}alloy.set_variable(".$json->encode($var).", arguments[".$i++."
 ${indent}${INDENT}var named = ($i < arguments.length) ? arguments[arguments.length-1] : null;
 ${indent}${INDENT}if (named && typeof named == 'object' && !(named instanceof Array))
 ${indent}${INDENT}${INDENT}for (var k in named) alloy.set_variable([k, 0], named[k]);
-
-${indent}${INDENT}var out_ref = [''];$code
+${indent}${INDENT}$code
 ${indent}${INDENT}} catch (e) { err = e };
 ${indent}${INDENT}alloy.restoreScope();
 ${indent}${INDENT}alloy._macro_recurse--;
