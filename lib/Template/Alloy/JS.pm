@@ -131,9 +131,6 @@ sub load_js {
         $ctx->bind(say => sub { print $_[0],"\n" });
         $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
 
-        #(my $file2 = __FILE__) =~ s|JS\.pm$|stack.js|;
-        #$ctx->eval(${ $self->slurp($file2) }) || $self->throw('compile_js', "Trouble loading javascript stacktrace: $@");
-
         (my $file = __FILE__) =~ s|JS\.pm$|vmethods.js|;
         $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript vmethods: $@");
 
@@ -146,7 +143,7 @@ sub load_js {
 
     my $callback = $ctx->eval(qq{
         alloy.register_template('$doc->{_filename}',$$js);
-        (function (out_ref) { return alloy.process('$doc->{_filename}', out_ref, {}, 1) })
+        (function (out_ref) { return alloy.process('$doc->{_filename}', out_ref, 1) })
     }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{_filename}: $@");
 
     return {code => sub {
@@ -189,16 +186,17 @@ sub compile_template_js {
 
 var blocks = {$self->{'_blocks'}};
 var meta   = {$self->{'_meta'}};
-var code   = function (alloy, out_ref, args) {"
+var code   = function (alloy, out_ref) {"
 .($self->{'_blocks'} ? "\n${INDENT}alloy.setBlocks(blocks);" : "")
 .($self->{'_meta'}   ? "\n${INDENT}alloy.setMeta(meta);" : "")
 ."$code
 };
 
 return {
-${INDENT}'blocks' : blocks,
-${INDENT}'meta'   : meta,
-${INDENT}'code'   : code
+${INDENT}name: ".$json->encode($self->{'_component'}->{'name'}).",
+${INDENT}blocks: blocks,
+${INDENT}meta: meta,
+${INDENT}code: code
 };
 })()";
 #    print $str;
@@ -684,9 +682,9 @@ sub compile_js_META {
     my ($self, $node, $str_ref, $indent) = @_;
     if ($node->[3]) {
         while (my($key, $val) = each %{ $node->[3] }) {
-            s/\'/\\\'/g foreach $key, $val;
-            $self->{'_meta'} .= "\n${indent}'$key' => '$val',";
+            $self->{'_meta'} .= "\n${indent}".$json->encode($key).":".$json->encode($val).",";
         }
+        chop $self->{'_meta'} if $self->{'_meta'};
     }
     return;
 }
