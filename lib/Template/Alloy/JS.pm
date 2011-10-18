@@ -281,7 +281,7 @@ sub _compile_expr_js {
         $args = $v->[$i++];
         push @var, "'$dot'", ref($name) ? _encode($s,$name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($s,$_)} @$args).']' : 0;
     }
-    return 'alloy.play_expr(['.join(',',@var).']'.($nctx?',{},true':'').')';
+    return 'alloy.get(['.join(',',@var).']'.($nctx?',{},true':'').')';
 }
 sub _encode {
     my ($s,$v) = @_;
@@ -295,8 +295,8 @@ sub _encode {
         : ($op eq '/')  ? '('._compile_expr_js($s,$v->[2],1).'/'._compile_expr_js($s,$v->[3],1).')'
         : ($op eq 'div')? 'parseInt('._compile_expr_js($s,$v->[2],1).'/'._compile_expr_js($s,$v->[3],1).')'
         : ($op eq '**') ? 'Math.pow('._compile_expr_js($s,$v->[2],1).','._compile_expr_js($s,$v->[3],1).')'
-        : ($op eq '++') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1+1); return v1'.($v->[3]?'':'+1').'})()'
-        : ($op eq '--') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set_variable('.$json->encode($v->[2]).', v1-1); return v1'.($v->[3]?'':'-1').'})()'
+        : ($op eq '++') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set('.$json->encode($v->[2]).', v1+1); return v1'.($v->[3]?'':'+1').'})()'
+        : ($op eq '--') ? '(function(){var v1='._compile_expr_js($s,$v->[2],1).'; alloy.set('.$json->encode($v->[2]).', v1-1); return v1'.($v->[3]?'':'-1').'})()'
         : ($op eq '%')  ? '('._compile_expr_js($s,$v->[2],1).'%'._compile_expr_js($s,$v->[3],1).')'
         : ($op eq '>')  ? '('._compile_expr_js($s,$v->[2],1).'>' ._compile_expr_js($s,$v->[3],1).'?1:"")'
         : ($op eq '>=') ? '('._compile_expr_js($s,$v->[2],1).'>='._compile_expr_js($s,$v->[3],1).'?1:"")'
@@ -313,7 +313,7 @@ sub _encode {
         : ($op eq '?')  ? '('._compile_expr_js($s,$v->[2]).'?'._compile_expr_js($s,$v->[3]).':'._compile_expr_js($s,$v->[4]).')'
         : ($op eq '<=>')? '(function(){var v1='._compile_expr_js($s,$v->[2],1).';var v2='._compile_expr_js($s,$v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
         : ($op eq 'cmp')? '(function(){var v1=""+'._compile_expr_js($s,$v->[2]).';var v2='._compile_expr_js($s,$v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
-        : ($op eq '=')  ? 'alloy.set_variable('.$json->encode($v->[2]).','._compile_expr_js($s,$v->[3]).')'
+        : ($op eq '=')  ? 'alloy.set('.$json->encode($v->[2]).','._compile_expr_js($s,$v->[3]).')'
         : ($op eq 'qr') ? '(new RegExp('._compile_expr_js($s,$v->[2]).','._compile_expr_js($s,$v->[3]).'))'
         : ($op eq '!' || $op eq 'not' || $op eq 'NOT') ? '!'._compile_expr_js($s,$v->[2])
         : ($op eq '&&' || $op eq 'and') ? '('._compile_expr_js($s,$v->[2]).'&&'._compile_expr_js($s,$v->[3]).')'
@@ -486,7 +486,7 @@ ${indent}${INDENT}var out_ref = [''];"
 
 ${indent}${INDENT}var expr = [[null, out_ref[0]], 0, '|'];
 ${indent}${INDENT}for (var i = 0; i < filter.length; i++) expr.push(filter[i]);
-${indent}${INDENT}return alloy.play_expr(expr);
+${indent}${INDENT}return alloy.get(expr);
 ${indent}})();
 ${indent}if (ref != null) out_ref[0] += ref;";
 
@@ -521,10 +521,10 @@ ${indent}while (!error) {";
 
     if (defined $name) {
         $$str_ref .= "
-$indent${INDENT}alloy.set_variable(".$json->encode($name).", val);";
+$indent${INDENT}alloy.set(".$json->encode($name).", val);";
     } else {
         $$str_ref .= "
-$indent${INDENT}if (val && typeof val == 'object' && !(val instanceof Array || val instanceof RegExp)) for (var k in val) alloy.set_variable(k, val[k]);";
+$indent${INDENT}if (val && typeof val == 'object' && !(val instanceof Array || val instanceof RegExp)) for (var k in val) alloy.set(k, val[k]);";
     }
 
     $$str_ref .= "$code
@@ -567,7 +567,17 @@ sub compile_js_IF {
 
 sub compile_js_INCLUDE {
     my ($self, $node, $str_ref, $indent) = @_;
-    _compile_defer_to_play($self, $node, $str_ref, $indent);
+    my ($self, $node, $str_ref, $indent) = @_;
+    my ($args, @files) = @{ $node->[3] };
+$$str_ref .= "
+${indent}var err;
+${indent}//blocks
+${indent}alloy.saveScope();
+${indent}try {
+${indent}alloy.process_d([".join(',',map{_compile_expr_js($self,$_)} @files)."],[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);
+${indent}} catch (e) { err = e };
+${indent}alloy.restoreScope();
+${indent}if (err != null) throw err;\n";
 }
 
 sub compile_js_INSERT {
@@ -600,13 +610,13 @@ ${indent}${INDENT}for (var i${i} = 0, I${i} = items${i}.length-1; i${i} <= I${i}
 ${indent}${INDENT}${INDENT}ref = items${i}[i${i}];
 ${indent}${INDENT}${INDENT}if (typeof ref != 'object') throw 'loop - Scalar value used in LOOP';
 ${indent}${INDENT}${INDENT}if (! global${i}) \$_vars = ref;
-${indent}${INDENT}${INDENT}else for (var i in ref) alloy.set_variable(i, ref[i]);
+${indent}${INDENT}${INDENT}else for (var i in ref) alloy.set(i, ref[i]);
 ${indent}${INDENT}${INDENT}if (\$_env.LOOP_CONTEXT_VARS && ! \$_env.QR_PRIVATE) {
-${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__counter__', i${i}+1);
-${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__first__', i${i}==0?1:0);
-${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__last__', i${i}==I${i}?1:0);
-${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__inner__', i${i}>0&&i${i}<I${i}?1:0);
-${indent}${INDENT}${INDENT}${INDENT}alloy.set_variable('__odd__', (i${i}%2)?0:1);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__counter__', i${i}+1);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__first__', i${i}==0?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__last__', i${i}==I${i}?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__inner__', i${i}>0&&i${i}<I${i}?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__odd__', (i${i}%2)?0:1);
 ${indent}${INDENT}${INDENT}}"
 .$self->compile_tree_js($node->[4], "$indent$INDENT$INDENT")."
 
@@ -625,14 +635,14 @@ sub compile_js_MACRO {
     my $sub_tree = $node->[4];
     if (! $sub_tree || ! $sub_tree->[0]) {
         $$str_ref .= "
-${indent}alloy.set_variable(".$json->encode($name).", null);";
+${indent}alloy.set(".$json->encode($name).", null);";
         return;
     } elsif (ref($sub_tree->[0]) && $sub_tree->[0]->[0] eq 'BLOCK') {
         $sub_tree = $sub_tree->[0]->[4];
     }
 
     $$str_ref .= "
-alloy.set_variable(".$json->encode($name).", "._macro_sub_js($self, $args, $sub_tree, $indent).");";
+alloy.set(".$json->encode($name).", "._macro_sub_js($self, $args, $sub_tree, $indent).");";
     return;
 }
 
@@ -653,12 +663,12 @@ ${indent}${INDENT}try {";
     my $i = 0;
     foreach my $var (@$args) {
         $str .= "
-${indent}${INDENT}alloy.set_variable(".$json->encode($var).", arguments[".$i++."]);";
+${indent}${INDENT}alloy.set(".$json->encode($var).", arguments[".$i++."]);";
     }
     $str .= "
 ${indent}${INDENT}var named = ($i < arguments.length) ? arguments[arguments.length-1] : null;
 ${indent}${INDENT}if (named && typeof named == 'object' && !(named instanceof Array))
-${indent}${INDENT}${INDENT}for (var k in named) alloy.set_variable([k, 0], named[k]);
+${indent}${INDENT}${INDENT}for (var k in named) alloy.set([k, 0], named[k]);
 ${indent}${INDENT}$code
 ${indent}${INDENT}} catch (e) { err = e };
 ${indent}${INDENT}alloy.restoreScope();
@@ -733,7 +743,7 @@ sub compile_js_PROCESS {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($args, @files) = @{ $node->[3] };
 $$str_ref .= "
-${indent}alloy.process_d(".$json->encode(\@files).",[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);\n";
+${indent}alloy.process_d([".join(',',map{_compile_expr_js($self,$_)} @files)."],[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);\n";
 }
 
 sub compile_js_RAWPERL {
@@ -786,7 +796,7 @@ ${indent}})();";
         }
 
         $$str_ref .= ";
-${indent}alloy.set_variable(".$json->encode($set).", ref)";
+${indent}alloy.set(".$json->encode($set).", ref)";
 
         if ($self->{'_is_default'}) {
             substr($indent, -length($INDENT), length($INDENT), '');
@@ -1122,13 +1132,13 @@ would parse to the following javascript code:
       out_ref[0] += "    Foo\n    ":
 
       // "GET" Line 2 char 6 (chars 14 to 22)
-      ref = alloy.play_expr(["foo",0]);
+      ref = alloy.get(["foo",0]);
       out_ref[0] += (typeof ref != 'undefined') ? ref : alloy.undefined_get(["foo",0]);
 
       out_ref[0] += "\n    ":
 
       // "GET" Line 3 char 6 (chars 32 to 40)
-      ref = alloy.play_expr(["bar",0]);
+      ref = alloy.get(["bar",0]);
       out_ref[0] += (typeof ref != 'undefined') ? ref : alloy.undefined_get(["bar",0]);
 
       out_ref[0] += "\n    Bar":
