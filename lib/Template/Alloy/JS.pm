@@ -157,7 +157,7 @@ sub load_js {
             WHILE_MAX         => $Template::Alloy::WHILE_MAX,
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
             (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT)),
-            (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES TRIM UNDEFINED_GET)),
+            (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES STRICT TRIM UNDEFINED_GET)),
         });
         my $out = $callback->([$$out_ref]);
         $$out_ref = $out->[0];
