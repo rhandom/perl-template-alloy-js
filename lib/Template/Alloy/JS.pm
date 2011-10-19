@@ -345,6 +345,10 @@ sub _encode {
             #my $code = $self->_macro_sub($tree->[2], $tree->[3]);
             #return sub { $code }; # do the double sub dance
             #die;
+        : ($op eq '\\') ? "(function () { var ref = alloy.get(".$json->encode($v->[2]).", {return_ref:1});
+${INDENT}if (!(ref instanceof Array)) return ref;
+${INDENT}if (!ref[ref.length-1]) ref[ref.length-1]=[]; var args=ref[ref.length-1];
+${INDENT}return function () { for (var i=0;i<arguments.length;i++) args.push(arguments[i]); return alloy.get(ref) }; })()"
         : die "Unimplemented Op (@$v)";
     return $_[2] ? $n : "[null,$n]";
 }
@@ -564,7 +568,6 @@ sub compile_js_IF {
 }
 
 sub compile_js_INCLUDE {
-    my ($self, $node, $str_ref, $indent) = @_;
     my ($self, $node, $str_ref, $indent) = @_;
     my ($args, @files) = @{ $node->[3] };
 $$str_ref .= "
@@ -964,77 +967,7 @@ sub compile_js_USE {
     _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
-sub compile_js_VIEW {
-    my ($self, $node, $str_ref, $indent) = @_;
-    my ($blocks, $args, $name) = @{ $node->[3] };
-
-    my $_name = $json->encode($name);
-
-    # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
-    $args = $args->[0];
-    $$str_ref .= "
-${indent}do {
-${indent}${INDENT}my \$name = $_name;
-${indent}${INDENT}my \$hash = {};";
-    foreach (my $i = 2; $i < @$args; $i+=2) {
-        $$str_ref .= "
-${indent}${INDENT}\$var = ".$self->compile_expr($args->[$i+1], $indent).";
-${indent}${INDENT}";
-        my $key = $args->[$i];
-        if (ref $key) {
-            if (@$key == 2 && ! ref($key->[0]) && ! $key->[1]) {
-                $key = $key->[0];
-            } else {
-                $$str_ref .= "
-${indent}${INDENT}\$self->set_variable(".$self->compile_expr($key, $indent).", \$var);";
-                next;
-            }
-        }
-        $key =~ s/([\'\\])/\\$1/g;
-        $$str_ref .= "\$hash->{'$key'} = \$var;";
-    }
-
-    $$str_ref .= "
-${indent}${INDENT}my \$prefix = \$hash->{'prefix'} || (ref(\$name) && \@\$name == 2 && ! \$name->[1] && ! ref(\$name->[0])) ? \"\$name->[0]/\" : '';
-${indent}${INDENT}my \$blocks = \$hash->{'blocks'} = {};";
-    foreach my $key (keys %$blocks) {
-        my $code = $self->compile_tree($blocks->{$key}, "$indent$INDENT$INDENT$INDENT");
-        $key =~ s/([\'\\])/\\$1/g;
-        $$str_ref .= "
-${indent}${INDENT}\$blocks->{'$key'} = {
-${indent}${INDENT}${INDENT}name  => \$prefix . '$key',
-${indent}${INDENT}${INDENT}_perl => {code => sub {
-${indent}${INDENT}${INDENT}${INDENT}my (\$self, \$out_ref, \$var) = \@_;$code
-
-${indent}${INDENT}${INDENT}${INDENT}return 1;
-${indent}${INDENT}${INDENT}} },
-${indent}${INDENT}};";
-    }
-
-    $$str_ref .= "
-${indent}${INDENT}\$self->throw('view', 'Could not load Template::View library')
-${indent}${INDENT}${INDENT} if ! eval { require Template::View };
-${indent}${INDENT}my \$view = Template::View->new(\$self->context, \$hash)
-${indent}${INDENT}${INDENT}|| \$self->throw('view', \$Template::View::ERROR);
-${indent}${INDENT}my \$old_view = \$self->play_expr(['view', 0]);
-${indent}${INDENT}\$self->set_variable(\$name, \$view);
-${indent}${INDENT}\$self->set_variable(['view', 0], \$view);";
-
-    if ($node->[4]) {
-        $$str_ref .= "
-${indent}${INDENT}my \$out = '';
-${indent}${INDENT}my \$out_ref = \\\$out;"
-    .$self->compile_tree($node->[4], "$indent$INDENT");
-    }
-
-    $$str_ref .= "
-${indent}${INDENT}\$self->set_variable(['view', 0], \$old_view);
-${indent}${INDENT}\$view->seal;
-${indent}};";
-
-
-    return;
-}
+sub compile_js_VIEW { shift->throw('compile_js', 'The VIEW directive is not supported in compile_js') }
 
 sub compile_js_WHILE {
     my ($self, $node, $str_ref, $indent) = @_;
