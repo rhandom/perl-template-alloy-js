@@ -69,6 +69,9 @@ sub new { die "This class is a role for use by packages such as Template::Alloy"
 
 our $js_context;
 our $js_self;
+our $js_a;
+our $js_v;
+our $js_m;
 sub load_js {
     my ($self, $doc) = @_;
 
@@ -130,18 +133,24 @@ sub load_js {
 
         $ctx->bind(say => sub { print $_[0],"\n" });
         $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
-
-        (my $file = __FILE__) =~ s|JS\.pm$|vmethods.js|;
-        $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript vmethods: $@");
-
-        ($file = __FILE__) =~ s|JS\.pm$|alloy.js|;
-        $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript pre-amble: $@");
-
-        ($file = __FILE__) =~ s|JS\.pm$|md5.js|;
-        $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript md5: $@");
-
         $ctx->bind('$_call_native' => \&_call_native);
         $ctx->eval('function $_n(n) {n==null?0:parseFloat(n)}');
+    }
+
+    if (!$js_a) {
+        (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
+        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
+        $js_a=1;
+    }
+    if (!$js_v) {
+        (my $file = __FILE__) =~ s|JS\.pm$|vmethods.js|;
+        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript vmethods: $@") if $@;
+        $js_v=1;
+    }
+    if (!$js_m) {
+        (my $file = __FILE__) =~ s|JS\.pm$|md5.js|;
+        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript md5: $@") if $@;
+        $js_m=1;
     }
 
     my $callback = $ctx->eval(qq{
@@ -605,11 +614,12 @@ sub compile_js_INCLUDE {
     my ($args, @files) = @{ $node->[3] };
 $$str_ref .= "
 ${indent}var err;
-${indent}//blocks
 ${indent}alloy.saveScope();
+${indent}alloy.saveBScope();
 ${indent}try {
 ${indent}alloy.process_d([".join(',',map{_compile_expr_js($self,$_)} @files)."],[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);
 ${indent}} catch (e) { err = e };
+${indent}alloy.restoreBScope();
 ${indent}alloy.restoreScope();
 ${indent}if (err != null) throw err;\n";
 }
