@@ -137,14 +137,17 @@ sub load_js {
         ($file = __FILE__) =~ s|JS\.pm$|alloy.js|;
         $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript pre-amble: $@");
 
-        $ctx->bind('$_call_native' => sub { my $m = shift; print "-------------callnative: $m\n"; my $val; eval { $val = $js_self->$m(@_); 1 } || $ctx->eval('throw'); $val });
+        ($file = __FILE__) =~ s|JS\.pm$|md5.js|;
+        $ctx->eval(${ $self->slurp($file) }) || $self->throw('compile_js', "Trouble loading javascript md5: $@");
+
+        $ctx->bind('$_call_native' => \&_call_native);
         $ctx->eval('function $_n(n) {n==null?0:parseFloat(n)}');
     }
 
     my $callback = $ctx->eval(qq{
-        alloy.register_template('$doc->{_filename}',$$js);
-        (function (out_ref) { return alloy.process('$doc->{_filename}', out_ref, 1) })
-    }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{_filename}: $@");
+        alloy.register_template('$doc->{name}',$$js);
+        (function (out_ref) { return alloy.process('$doc->{name}', out_ref, 1) })
+    }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{name}: $@");
 
     return {code => sub {
         my ($self, $out_ref) = @_;
@@ -163,6 +166,39 @@ sub load_js {
         $$out_ref = $out->[0];
         return 1;
     }};
+}
+
+###----------------------------------------------------------------###
+
+sub _call_native {
+    my $meth = shift;
+    my $val;
+    my $ok;
+    if (my $code = __PACKAGE__->can("_native_$meth")) {
+        $ok = eval { $val = $code->($js_self, @_); 1 };
+    } else {
+        print "-------------callnative: $meth\n";
+        $ok = eval { $val = $js_self->$meth(@_); 1 };
+    }
+    if (!$ok) {
+        my $err = $@;
+        $js_context->eval("alloy.throw(".$json->encode($err->type).",".$json->encode($err->info).")") if UNIVERSAL::can($err,'type');
+        $js_context->eval("alloy.throw('native', 'trouble running method $meth');");
+    }
+    return $val;
+}
+
+sub _native_insert {
+    my ($self, $files)  = @_;
+    $self->throw('file', 'NO_INCLUDES was set during an INSERT directive') if $self->{'NO_INCLUDES'};
+    return join '', map {${$self->slurp($self->include_filename($_))}} @$files;
+}
+
+sub _native_load {
+    my ($self, $file) = @_;
+    my $doc = $self->load_template($file);
+    $self->throw('file', "Failed to load file $file during native_load") if ! $doc->{'_js'}->{'code'};
+    return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -342,9 +378,6 @@ sub _encode {
                 : '(function () { var a = [];'.join(' ',map{!ref($_) ? "a.push($_);" : "for(var i=$_->[0];i<=$_->[1];i++) a.push(i);"}@e).' return a })()';
         }
         : ($op eq '->') ? 'function () { return '._macro_sub_js($s,$v->[2],$v->[3],'  ').' }'
-            #my $code = $self->_macro_sub($tree->[2], $tree->[3]);
-            #return sub { $code }; # do the double sub dance
-            #die;
         : ($op eq '\\') ? "(function () { var ref = alloy.get(".$json->encode($v->[2]).", {return_ref:1});
 ${INDENT}if (!(ref instanceof Array)) return ref;
 ${INDENT}if (!ref[ref.length-1]) ref[ref.length-1]=[]; var args=ref[ref.length-1];
@@ -583,8 +616,12 @@ ${indent}if (err != null) throw err;\n";
 
 sub compile_js_INSERT {
     my ($self, $node, $str_ref, $indent) = @_;
-    _compile_defer_to_play($self, $node, $str_ref, $indent);
+    my ($args, @files) = @{ $node->[3] };
+$$str_ref .= "
+${indent}if (\$_env.NO_INCLUDES) alloy.throw('file', 'NO_INCLUDES was set during an INSERT directive');
+${indent}alloy.insert([".join(',',map{_compile_expr_js($self,$_)} @files)."], out_ref);\n";
 }
+
 
 sub compile_js_LAST {
     my ($self, $node, $str_ref, $indent) = @_;
@@ -683,8 +720,9 @@ ${indent}}";
 
 sub compile_js_META {
     my ($self, $node, $str_ref, $indent) = @_;
-    if ($node->[3]) {
-        while (my($key, $val) = each %{ $node->[3] }) {
+    if (my $kp = $node->[3]) {
+        $kp = {@$kp} if ref($kp) eq 'ARRAY';
+        while (my($key, $val) = each %$kp) {
             $self->{'_meta'} .= "\n${indent}".$json->encode($key).":".$json->encode($val).",";
         }
         chop $self->{'_meta'} if $self->{'_meta'};
