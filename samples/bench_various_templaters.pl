@@ -23,6 +23,7 @@ use Template::Alloy;
 use Template::Alloy::XS;
 use POSIX qw(tmpnam);
 use File::Path qw(mkpath rmtree);
+use JSON;
 
 ###----------------------------------------------------------------###
 
@@ -44,6 +45,8 @@ my $names = {
   TA_H_JS      => 'Template::Alloy::XS using HTML::Template interface - Javascript code based',
   TA_H_XP      => 'Template::Alloy::XS using HTML::Template interface - Perl code eval based',
   TA_XTMPL     => 'CGI::Ex::Temmplate::XS using Text::Tmpl interface',
+  JS           => 'Template::Alloy::JS - JavaScript based',
+  JSR          => 'Template::Alloy::JS - Using raw templates',
   HT           => 'HTML::Template',
   HTE          => 'HTML::Template::Expr',
   HTJ          => 'HTML::Template::JIT - Compiled to C template',
@@ -231,6 +234,58 @@ $args->{shell_footer}
 };
 
 ###----------------------------------------------------------------###
+### TA JS style template
+
+my $content_js = <<"DOC";
+[% write(vars.shell_header) %]
+[% write(vars.shell_start) %]
+$filler
+
+[% if (vars.foo) {
+    write("\\nThis is some text.\\n");
+   } %]
+
+[% for (var i = 0, I = vars.a_stuff.length; i < I; i++) write(vars.a_stuff[i]) %]
+[% write(vars.pass_in_something) %]
+
+$filler
+[% write(vars.shell_end) %]
+[% write(vars.shell_footer) %]
+DOC
+
+if (open (my $fh, ">$dir/foo.jstem")) {
+    print $fh $content_js;
+    close $fh;
+}
+
+###----------------------------------------------------------------###
+### TA JSR style template
+
+my $jsonfiller = JSON::to_json($filler, {allow_nonref=>1});
+my $content_jsr = <<"DOC";
+write(vars.shell_header+'\\n'
+      +vars.shell_start+'\\n');
+write($jsonfiller+'\\n\\n');
+
+if (vars.foo) {
+    write("\\nThis is some text.\\n");
+}
+write('\\n\\n');
+
+for (var i = 0, I = vars.a_stuff.length; i < I; i++) write(vars.a_stuff[i]);
+write('\\n'+vars.pass_in_something+'\\n\\n');
+
+write($jsonfiller+'\\n');
+write(vars.shell_end+'\\n'
+      +vars.shell_footer+'\\n');
+DOC
+
+if (open (my $fh, ">$dir/foo.jsr")) {
+    print $fh $content_jsr;
+    close $fh;
+}
+
+###----------------------------------------------------------------###
 ### The TT interface allows for a single object to be cached and reused.
 
 my %Alloy_DOCUMENTS;
@@ -298,9 +353,19 @@ my $tests = {
         my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
     },
     TA_JSS_str => sub {
-        my $t = Template::Alloy::XS->new(COMPILE_JS => 1);
-        $t->{'_documents'} = \%AlloyXP_DOCUMENTS;
+        my $t = Template::Alloy->new(COMPILE_JS => 1);
+        $t->{'_documents'} = \%AlloyJS_DOCUMENTS;
         my $out = ""; $t->process_simple(\$content_tt, {%$stash_t, %$form}, \$out); $out;
+    },
+    JS_str => sub {
+        my $t = Template::Alloy->new(COMPILE_JS => 1);
+        $t->{'_documents'} = \%AlloyJS_DOCUMENTS;
+        my $out = ""; $t->process_js(\$content_js, {%$stash_t, %$form}, \$out); $out;
+    },
+    JSR_str => sub {
+        my $t = Template::Alloy->new(COMPILE_JS => 1);
+        $t->{'_documents'} = \%AlloyJS_DOCUMENTS;
+        my $out = ""; $t->process_jsr(\$content_jsr, {%$stash_t, %$form}, \$out); $out;
     },
     TA_XPS_str => sub {
         my $t = Template::Alloy::XS->new(COMPILE_PERL => 1);
@@ -389,6 +454,14 @@ my $tests = {
         my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3);
         my $out = ''; $t->process_simple('foo.tt', {%$stash_t, %$form}, \$out); $out;
     },
+    JS_file => sub {
+        my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3);
+        my $out = ''; $t->process_js('foo.jstem', {%$stash_t, %$form}, \$out) || warn $t->error; $out;
+    },
+    JSR_file => sub {
+        my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3);
+        my $out = ''; $t->process_jsr('foo.jsr', {%$stash_t, %$form}, \$out) || warn $t->error; $out;
+    },
     TA_X_file => sub {
         my $t = Template::Alloy::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR => $dir2);
         my $out = ''; $t->process('foo.tt', $form, \$out); $out;
@@ -468,6 +541,8 @@ my $tests = {
     TA_XP_mem  => sub { my $out = ""; $taxp->process('foo.tt', $form, \$out); $out },
     TA_XPS_mem => sub { my $out = ""; $taxps->process_simple('foo.tt', {%$stash_t, %$form}, \$out); $out },
     TA_P_mem   => sub { my $out = ""; $tap->process( 'foo.tt', $form, \$out); $out },
+    JS_mem     => sub { my $out = ""; $tajss->process_js( 'foo.jstem', {%$stash_t, %$form}, \$out); $out },
+    JSR_mem    => sub { my $out = ""; $tajss->process_jsr('foo.jsr',   {%$stash_t, %$form}, \$out); $out },
 
     TA_H_mem => sub {
         my $t = Template::Alloy->new(    filename => "foo.ht", path => \@dirs, cache => 1, case_sensitve=>1);
@@ -507,11 +582,19 @@ my $tests = {
 
 my $test = $tests->{'TT_str'}->();
 foreach my $name (sort keys %$tests) {
-    if ($test ne $tests->{$name}->()) {
+    my $try = $tests->{$name}->();
+    if ($test ne $try) {
+        #for my $i (0 .. length($try)) {
+        #    next if substr($try,$i,1) eq substr($test,$i,1);
+        #    substr($try, $i, 0, '<*>');
+        #    last;
+        #}
+        #$test =~ s/$/</mg;
+        #$try =~ s/$/</mg;
         print "--------------------------TT_str-------\n";
         print $test;
         print "--------------------------$name--------\n";
-        print $tests->{$name}->();
+        print $try;
         die "$name did not match TT_str output\n";
     }
     $name =~ /(\w+)_(\w+)/;
