@@ -9,7 +9,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 6;
+use Test::More tests => 13;
 
 ###----------------------------------------------------------------###
 ### loading via can, use, and import
@@ -23,14 +23,31 @@ ok($INC{'Template/Alloy/JS.pm'},       "Now it is loaded");
 
 use_ok('Template::Alloy::JS');
 
-my $ta = Template::Alloy::JS->new;
-my $out = '';
-$ta->process(\q{[% JS %] write("Hello from "+vars.foo) [% END %]}, {foo => 'javascript'}, \$out);
-is($out, 'Hello from javascript', 'Can get expected output from javascript');
+for my $ta (Template::Alloy->new(COMPILE_JS => 1), Template::Alloy::JS->new) {
+    print "# ".ref($ta)."\n";
 
-# same as
+    my $out  = '';
+    my $in   = q{[% JS %] write("Hello from "+vars.foo) [% END %]};
+    my $test = 'Hello from javascript';
+    $ta->process(\$in, {foo => 'javascript'}, \$out) || diag($ta->error);
+    is($out, $test, "$in ===> $test");
 
-#use Template::Alloy;
-#my $ta = Template::Alloy->new(COMPILE_JS => 1);
+    $out = '';
+    $in   = q{[% a = 43; JS %] write(vars.a); vars.b = 67 [% END %]~[% b %]};
+    $test = '43~67';
+    $ta->process(\$in, {}, \$out) || diag($ta->error);
+    is($out, $test, "$in ===> $test");
 
+    $out = '';
+    $in   = q{([% write("Hello from "+vars.foo) %])};
+    $test = '(Hello from javascript)';
+    $ta->process_js(\$in, {foo => 'javascript'}, \$out) || diag($ta->error);
+    is($out, $test, "$in ===> $test");
 
+    $out = '';
+    $in   = q{ write("Hello from "+vars.foo) };
+    $test = 'Hello from javascript';
+    $ta->process_jsr(\$in, {foo => 'javascript'}, \$out) || diag($ta->error);
+    is($out, $test, "$in ===> $test");
+
+}
