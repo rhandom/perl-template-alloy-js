@@ -704,15 +704,7 @@ sub compile_js_INCLUDE {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($args, @files) = @{ $node->[3] };
 $$str_ref .= "
-${indent}var err;
-${indent}alloy.saveScope();
-${indent}alloy.saveBScope();
-${indent}try {
-${indent}alloy.process_d([".join(',',map{_compile_expr_js($self,$_)} @files)."],[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);
-${indent}} catch (e) { err = e };
-${indent}alloy.restoreBScope();
-${indent}alloy.restoreScope();
-${indent}if (err != null) throw err;\n";
+${indent}alloy.process_d_i([".join(',',map{_compile_expr_js($self,$_)} @files)."],[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);\n";
 }
 
 sub compile_js_INSERT {
@@ -725,11 +717,11 @@ ${indent}alloy.insert([".join(',',map{_compile_expr_js($self,$_)} @files)."], ou
 
 sub compile_js_JS {
     my ($self, $node, $str_ref, $indent) = @_;
-    $$str_ref .= "\n${indent}(function (write, vars, env) {
+    $$str_ref .= "\n${indent}(function (write, vars, env, process) {
 ${indent}var out_ref = [''];
-${indent}var \$_env, \$_vars;
+${indent}var \$_env, \$_vars, alloy;
 ${indent}$node->[4]->[0]
-${indent}})(function (s) {out_ref[0]+=s}, \$_vars, \$_env)
+${indent}})(function (s) {out_ref[0]+=s}, \$_vars, \$_env, function (f,a,l,r) { return alloy.process_ex(f,a,l,r ? null : out_ref) })
 ";
 }
 
