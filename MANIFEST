@@ -1,0 +1,12 @@
+lib/Template/Alloy/alloy.js
+lib/Template/Alloy/JS.pm
+lib/Template/Alloy/JS.pod
+lib/Template/Alloy/md5.js
+lib/Template/Alloy/vmethods.js
+Makefile.PL
+MANIFEST			This list of files
+README
+samples/bench_template.pl
+samples/bench_various_templaters.pl
+t/05_tt_base.t
+t/10_tt_includes.t

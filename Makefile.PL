@@ -12,9 +12,8 @@ WriteMakefile(
               VERSION_FROM  => "lib/Template/Alloy/JS.pm",
               INSTALLDIRS   => 'site',
               PREREQ_PM     => {
-                  'Digest::MD5' => 1,
-                  'JavaScript::V8' => 1,
-                  'JSON'           => 1,
+                  'JavaScript::V8' => '0.06',
+                  'JSON'           => 2,
               },
               dist          => {
                   DIST_DEFAULT => 'all tardist',
