@@ -7,7 +7,7 @@
 =cut
 
 use 5.006;
-use vars qw($module $is_tt $compile_perl $compile_js $use_stream $five_six);
+use vars qw($module $is_tt $compile_js $five_six $use_stream);
 BEGIN {
     $module = 'Template::Alloy';
     if ($ENV{'USE_TT'} || grep {/tt/i} @ARGV) {
@@ -38,8 +38,6 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
-    push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
-    push @$conf, (STREAM => 1) if $use_stream;
     push @$conf, (COMPILE_JS => 1) if $compile_js;
     my $obj  = shift || $module->new(@$conf); # new object each time
     my $out  = '';
@@ -48,21 +46,7 @@ sub process_ok { # process the value and say if it was ok
 
     Taint::Runtime::taint(\$str) if test_taint;
 
-    my $fh;
-    if ($use_stream) {
-        open($fh, ">", "$test_dir/stream.out") || return ok(0, "Line $line   \"$str\" - Can't open stream.out: $!");
-        select $fh;
-    }
-
     $obj->process(\$str, $vars, \$out);
-
-    if ($use_stream) {
-        select STDOUT;
-        close $fh;
-        open($fh, "<", "$test_dir/stream.out") || return ok(0, "Line $line   \"$str\" - Can't read stream.out: $!");
-        $out = '';
-        read($fh, $out, -s "$test_dir/stream.out");
-    }
 
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
     if ($ok) {
@@ -130,12 +114,24 @@ my $vars;
 my $stash = {foo => 'Stash', bingo => 'bango'};
 $stash = Template::Stash->new($stash) if eval{require Template::Stash};
 
-for my $opt ('compile_js', 'normal', 'compile_perl', 'stream') {
+for my $opt ('compile_js') {
     $compile_js   = ($opt eq 'compile_js');
-    $compile_perl = ($opt eq 'compile_perl');
-    $use_stream   = ($opt eq 'stream');
-    next if $is_tt && ($compile_perl || $use_stream);
+    next if $is_tt && ($compile_js);
     my $engine_option = "engine_option ($opt)";
+
+###----------------------------------------------------------------###
+print "### JS ############################################## $engine_option\n";
+
+process_ok('[% JS %] write(3); [% END %]' => '') if ! $compile_js;
+if ($compile_js) {
+process_ok('[% JS %] write(3); [% END %]' => 3);
+process_ok('[% JS %]
+  var n = [];
+  for (var i = 0; i < 7; i++) n.push(i);
+  write(n.join("-"));
+[% END %]' => "0-1-2-3-4-5-6");
+}
+process_ok('[% n = JS %] write(42); return 67; [% END %]([% n %])' => '(42)');
 
 ###----------------------------------------------------------------###
 print "### GET ############################################# $engine_option\n";
@@ -1522,17 +1518,17 @@ process_ok('[% foo | eval %]' => 'baz', {foo => '[% bar %]', bar => 'baz'});
 process_ok('[% "[% 1 + 2 %]" | eval %]' => '3') if ! $is_tt;
 process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
 
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
-process_ok("[% '#set(\$foo = 12)'|eval(syntax => 'velocity') %]|[% foo %]" => '|12') if ! $is_tt;
+#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+#process_ok("[% '#set(\$foo = 12)'|eval(syntax => 'velocity') %]|[% foo %]" => '|12') if ! $is_tt;
 
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; EVALUATE f %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; EVALUATE f; EVALUATE f %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
-process_ok("[% EVALUATE '#set(\$foo = 12)' syntax => 'velocity' %]|[% foo %]" => '|12') if ! $is_tt;
+#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; EVALUATE f %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; EVALUATE f; EVALUATE f %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+#process_ok("[% EVALUATE '#set(\$foo = 12)' syntax => 'velocity' %]|[% foo %]" => '|12') if ! $is_tt;
 if (!$is_tt) {
-process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error; END %]" => 'var.undef error - undefined variable: bar in input text');
-process_ok("[% TRY; CONFIG STRICT => 1; '[% bar %]'.eval(STRICT => 0); CATCH; error; END %]" => 'eval_strict error - Cannot disable STRICT once it is enabled');
-process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error.type; END; bing %] - ok" => 'var.undef - ok'); # restricted to sub components
+#process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error; END %]" => 'var.undef error - undefined variable: bar in input text');
+#process_ok("[% TRY; CONFIG STRICT => 1; '[% bar %]'.eval(STRICT => 0); CATCH; error; END %]" => 'eval_strict error - Cannot disable STRICT once it is enabled');
+#process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error.type; END; bing %] - ok" => 'var.undef - ok'); # restricted to sub components
 }
 
 ###----------------------------------------------------------------###
