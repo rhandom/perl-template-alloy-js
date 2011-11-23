@@ -9,6 +9,7 @@ Template::Alloy::JS - Compile JS role - allows for compiling the AST to javascri
 use strict;
 use warnings;
 use Template::Alloy;
+our @ISA = qw(Template::Alloy); # for objects blessed as Template::Alloy::JS
 
 eval { require JSON } || die "Cannot load JSON library used by Template::Alloy::JS: $@";
 my $json = eval { JSON->new->allow_nonref } || eval { JSON->new };
@@ -66,10 +67,95 @@ our $DIRECTIVES = {
 };
 
 sub new {
-    my $class = shift;
-    my $self = Template::Alloy->new(@_);
+    my $self = shift->SUPER::new(@_);
     $self->{'COMPILE_JS'} = 1;
     return $self;
+}
+
+sub process_jsr {
+    my $self = shift;
+    local $self->{'SYNTAX'} = 'jsr';
+    local $self->{'COMPILE_JS'} = 1 if ! $self->{'COMPILE_JS'};
+    return $self->process_simple(@_);
+}
+
+sub parse_tree_jsr {
+    my $self    = shift;
+    my $str_ref = shift;
+    if (! $str_ref || ! defined $$str_ref) {
+        $self->throw('parse.no_string', "No string or undefined during parse", undef, 1);
+    }
+    return [['JS', 0, length($$str_ref), undef, [$$str_ref]]];
+}
+
+sub process_js {
+    my $self = shift;
+    local $self->{'SYNTAX'} = 'js';
+    local $self->{'COMPILE_JS'} = 1 if ! $self->{'COMPILE_JS'};
+    return $self->process_simple(@_);
+}
+
+sub parse_tree_js {
+    my $self    = shift;
+    my $str_ref = shift;
+    if (! $str_ref || ! defined $$str_ref) {
+        $self->throw('parse.no_string', "No string or undefined during parse", undef, 1);
+    }
+
+    my $STYLE = $self->{'TAG_STYLE'} || 'default';
+    local $self->{'_end_tag'}   = $self->{'END_TAG'}   || $Template::Alloy::Parse::TAGS->{$STYLE}->[1];
+    local $self->{'_start_tag'} = $self->{'START_TAG'} || $Template::Alloy::Parse::TAGS->{$STYLE}->[0];
+
+    my @tree;             # the parsed tree
+    my $post_chomp = 0;   # previous post_chomp setting
+    pos($$str_ref) = 0;
+
+    while (1) {
+
+        ### find the next opening tag
+        $$str_ref =~ m{ \G (.*?) $self->{'_start_tag'} }gcxs
+            || last;
+        my $text = $1;
+        if (length $text) {
+            if (! $post_chomp) { }
+            elsif ($post_chomp == 1) { $text =~ s{ ^ [^\S\n]* \n }{}x  }
+            elsif ($post_chomp == 2) { $text =~ s{ ^ \s+         }{ }x }
+            elsif ($post_chomp == 3) { $text =~ s{ ^ \s+         }{}x  }
+            push @tree, $text if length $text;
+        }
+
+        ### take care of whitespace and comments flags
+        my $pre_chomp = $$str_ref =~ m{ \G ([+=~-]) }gcx ? $1 : $self->{'PRE_CHOMP'};
+        $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
+        if ($pre_chomp && $tree[-1] && ! ref $tree[-1]) {
+            if    ($pre_chomp == 1) { $tree[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{}x  }
+            elsif ($pre_chomp == 2) { $tree[-1] =~ s{             (\s+) \z }{ }x }
+            elsif ($pre_chomp == 3) { $tree[-1] =~ s{             (\s+) \z }{}x  }
+            splice(@tree, -1, 1, ()) if ! length $tree[-1]; # remove the node if it is zero length
+        }
+        my $begin = pos($$str_ref);
+
+        ### look for the closing tag
+        if ($$str_ref !~ m{ \G (.*?) ([+=~-]?) $self->{'_end_tag'} }gcxs) {
+            $self->throw("Missing close tag", undef, pos($$str_ref));
+        }
+        push @tree, ['JS', $begin, pos($$str_ref), undef, [$1]];
+        $post_chomp = $2 || $self->{'POST_CHOMP'};
+        $post_chomp =~ y/-=~+/1230/ if $post_chomp;
+        next;
+    }
+
+    ### pull off the last text portion - if any
+    if (pos($$str_ref) != length($$str_ref)) {
+        my $text  = substr $$str_ref, pos($$str_ref);
+        if (! $post_chomp) { }
+        elsif ($post_chomp == 1) { $text =~ s{ ^ [^\S\n]* \n }{}x  }
+        elsif ($post_chomp == 2) { $text =~ s{ ^ \s+         }{ }x }
+        elsif ($post_chomp == 3) { $text =~ s{ ^ \s+         }{}x  }
+        push @tree, $text if length $text;
+    }
+
+    return \@tree;
 }
 
 our $js_context;
@@ -1077,6 +1163,4 @@ ${indent}\$\$out_ref .= \$var if defined \$var;";
 ###----------------------------------------------------------------###
 
 1;
-
-__END__
 
