@@ -92,12 +92,19 @@ my $ta = Template::Alloy->new(
     COMPILE_EXT  => '.outa',
     COMPILE_DIR  => '.ta',
 );
+my $tp = Template::Alloy->new(
+    INCLUDE_PATH => [$path],
+    COMPILE_EXT  => '.outp',
+    COMPILE_DIR  => '.tp',
+    COMPILE_PERL => 2,
+);
 use File::Path qw(rmtree);
 END {
     rmtree(".tt");
     rmtree(".xslate_cache");
     rmtree(".tj");
     rmtree(".ta");
+    rmtree(".tp");
 };
 
 my $vars = {
@@ -110,7 +117,7 @@ my $vars = {
 };
 
 {
-    my $tests = 4;
+    my $tests = 5;
     plan tests => $tests;
 
     my $expected = '';
@@ -129,11 +136,15 @@ my $vars = {
     is $out, $expected, 'TJ: Template::Alloy::JS';
 
     $out = '';
+    $tp->process_simple("$tmpl.tt", $vars, \$out) or die $tp->error;
+    is $out, $expected, 'TP: Template::Alloy (compile to perl)';
+
+    $out = '';
     $tt->process("$tmpl.tt", $vars, \$out) or die $tt->error;
     is $out, $expected, 'TT: Template::Toolkit (no XS)';
 
     $out = '';
-    $ttx->process("$tmpl.tt", $vars, \$out) or die $tt->error;
+    $ttx->process("$tmpl.tt", $vars, \$out) or die $ttx->error;
     is $out, $expected, 'TTX: Template::Toolkit with XS';
 }
 
@@ -146,6 +157,11 @@ cmpthese timethese -1 => {
     TJ => sub {
         my $body = '';
         $tj->process_simple("$tmpl.tt", {%$vars}, \$body) or die $tj->error;
+        return;
+    },
+    TP => sub {
+        my $body = '';
+        $tp->process_simple("$tmpl.tt", {%$vars}, \$body) or die $tp->error;
         return;
     },
     TA => sub {
@@ -173,23 +189,26 @@ cmpthese timethese -1 => {
   Template/2.24
   Template::Alloy/1.016
   Template::Alloy::JS/1.000
-  1..4
-  ok 1 - TX: Text::XSlate
+  1..5
+  ok 1 - TX: Text::Xslate
   ok 2 - TJ: Template::Alloy::JS
-  ok 3 - TT: Template::Toolkit (no XS)
-  ok 4 - TTX: Template::Toolkit with XS
+  ok 3 - TP: Template::Alloy (compile to perl)
+  ok 4 - TT: Template::Toolkit (no XS)
+  ok 5 - TTX: Template::Toolkit with XS
   Benchmarks with 'include' (datasize=100)
-  Benchmark: running TA, TJ, TT, TTX, Xslate for at least 1 CPU seconds...
-          TA:  1 wallclock secs ( 1.02 usr +  0.01 sys =  1.03 CPU) @ 107.77/s (n=111)
-          TJ:  1 wallclock secs ( 1.10 usr +  0.01 sys =  1.11 CPU) @ 755.86/s (n=839)
-          TT:  1 wallclock secs ( 1.10 usr +  0.02 sys =  1.12 CPU) @ 106.25/s (n=119)
-         TTX:  1 wallclock secs ( 1.06 usr +  0.00 sys =  1.06 CPU) @ 211.32/s (n=224)
-      Xslate:  1 wallclock secs ( 1.05 usr +  0.02 sys =  1.07 CPU) @ 784.11/s (n=839)
-          Rate     TT     TA    TTX     TJ Xslate
-  TT     106/s     --    -1%   -50%   -86%   -86%
-  TA     108/s     1%     --   -49%   -86%   -86%
-  TTX    211/s    99%    96%     --   -72%   -73%
-  TJ     756/s   611%   601%   258%     --    -4%
-  Xslate 784/s   638%   628%   271%     4%     --
+  Benchmark: running TA, TJ, TP, TT, TTX, Xslate for at least 1 CPU seconds...
+          TA:  1 wallclock secs ( 1.04 usr +  0.00 sys =  1.04 CPU) @ 106.73/s (n=111)
+          TJ:  1 wallclock secs ( 1.04 usr +  0.01 sys =  1.05 CPU) @ 752.38/s (n=790)
+          TP:  2 wallclock secs ( 1.10 usr +  0.00 sys =  1.10 CPU) @ 108.18/s (n=119)
+          TT:  1 wallclock secs ( 1.11 usr +  0.01 sys =  1.12 CPU) @ 106.25/s (n=119)
+         TTX:  2 wallclock secs ( 1.04 usr +  0.01 sys =  1.05 CPU) @ 212.38/s (n=223)
+      Xslate:  1 wallclock secs ( 1.07 usr +  0.01 sys =  1.08 CPU) @ 777.78/s (n=840)
+          Rate     TT     TA     TP    TTX     TJ Xslate
+  TT     106/s     --    -0%    -2%   -50%   -86%   -86%
+  TA     107/s     0%     --    -1%   -50%   -86%   -86%
+  TP     108/s     2%     1%     --   -49%   -86%   -86%
+  TTX    212/s   100%    99%    96%     --   -72%   -73%
+  TJ     752/s   608%   605%   595%   254%     --    -3%
+  Xslate 778/s   632%   629%   619%   266%     3%     --
 
 =cut
