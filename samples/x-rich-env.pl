@@ -117,7 +117,7 @@ my $vars = {
     $ta->process_simple("$tmpl.tt", $vars, \$expected) or die $ta->error;
     my $size = length($expected);
     my $expected2 = $expected;
-    $expected2 =~ s/\n+/\n/g; # this is required because Xslate has not template control of whitespace via chomping
+    $expected2 =~ s/\n+/\n/g; # this is required because Xslate may not control of whitespace via chomping (i think it was added in more recent versions)
 
     my $out = $tx->render("$tmpl.tt", $vars);
     my $size2 = length($out);

@@ -1,0 +1,6 @@
+List:
+[% FOREACH item IN data -%]
+    * [% item.title ? item.title.html() : 'foo' %]
+    * [% item.author.html() || 'no author' %]
+    * [% item.abstract.html() || '-' %]
+[% END -%]
