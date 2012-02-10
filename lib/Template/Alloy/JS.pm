@@ -14,6 +14,7 @@ our @ISA = qw(Template::Alloy); # for objects blessed as Template::Alloy::JS
 eval { require JSON } || die "Cannot load JSON library used by Template::Alloy::JS: $@";
 my $json = eval { JSON->new->allow_nonref } || eval { JSON->new };
 die "The loaded JSON library does not support the encode method needed by Template::Alloy::JS\n" if ! $json || !$json->can('encode');
+our $js_context;
 
 our $VERSION = '1.000';
 our $INDENT  = ' ' x 2;
@@ -88,10 +89,19 @@ sub parse_tree_jsr {
     return [['JS', 0, length($$str_ref), undef, [$$str_ref]]];
 }
 
+our $js_self;
+our $js_a;
+our $js_v;
+our $js_m;
 sub process_js {
     my $self = shift;
     local $self->{'SYNTAX'} = 'js';
     local $self->{'COMPILE_JS'} = 1 if ! $self->{'COMPILE_JS'};
+#    local $js_context;
+#    local $js_self;
+#    local $js_a;
+#    local $js_v;
+#    local $js_m;
     return $self->process_simple(@_);
 }
 
@@ -158,11 +168,6 @@ sub parse_tree_js {
     return \@tree;
 }
 
-our $js_context;
-our $js_self;
-our $js_a;
-our $js_v;
-our $js_m;
 sub load_js {
     my ($self, $doc) = @_;
 
@@ -233,20 +238,20 @@ sub load_js {
         $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
         $js_a=1;
     }
-    if (!$js_v) {
+    if (!$js_v && (!$self->{'SYNTAX'} || $self->{'SYNTAX'} ne 'js')) {
         (my $file = __FILE__) =~ s|JS\.pm$|vmethods.js|;
         $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript vmethods: $@") if $@;
         $js_v=1;
     }
-    if (!$js_m) {
-        (my $file = __FILE__) =~ s|JS\.pm$|md5.js|;
-        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript md5: $@") if $@;
-        $js_m=1;
-    }
+#    if (!$js_m) {
+#        (my $file = __FILE__) =~ s|JS\.pm$|md5.js|;
+#        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript md5: $@") if $@;
+#        $js_m=1;
+#    }
 
     my $callback = $ctx->eval(qq{
         alloy.register_template('$doc->{name}',$$js);
-        (function (out_ref) { return alloy.process('$doc->{name}', out_ref, 1) })
+        (function (out_ref) { try { var r = alloy.process('$doc->{name}', out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
     }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{name}: $@");
 
     return {code => sub {
@@ -263,7 +268,14 @@ sub load_js {
             (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES STRICT TRIM UNDEFINED_GET)),
         });
         my $out = $callback->([$$out_ref]);
-        $$out_ref = $out->[0];
+        if (ref($out) eq 'ARRAY') {
+            $$out_ref = $out->[0];
+        } else {
+            my $e = ref($out) eq 'HASH' && $out->{'_call_native_throw'}  || {};
+            my $type = ref($e) eq 'HASH' && $e->{'type'} || 'jsthrow';
+            my $info = ref($e) eq 'HASH' && $e->{'info'} || $e;
+            $self->throw($type, $info);
+        }
         return 1;
     }};
 }
@@ -272,20 +284,12 @@ sub load_js {
 
 sub _call_native {
     my $meth = shift;
+    my $code = __PACKAGE__->can("_native_$meth") || return {_call_native_error => ['undef', "Unknown method $meth"]};
     my $val;
-    my $ok;
-    if (my $code = __PACKAGE__->can("_native_$meth")) {
-        $ok = eval { $val = $code->($js_self, @_); 1 };
-    } else {
-        print "-------------callnative: $meth\n";
-        $ok = eval { $val = $js_self->$meth(@_); 1 };
-    }
-    if (!$ok) {
-        my $err = $@;
-        $js_context->eval("alloy.throw(".$json->encode($err->type).",".$json->encode($err->info).")") if UNIVERSAL::can($err,'type');
-        $js_context->eval("alloy.throw('native', 'trouble running method $meth');");
-    }
-    return $val;
+    return $val if eval { $val = $code->($js_self, @_); 1 };
+    my $err = $@;
+    return {_call_native_error => [$err->type, $err->info]} if UNIVERSAL::can($err,'type');
+    return {_call_native_error => ['native', "trouble running method $meth: $@"]};
 }
 
 sub _native_insert {
@@ -299,6 +303,12 @@ sub _native_load {
     my $doc = $self->load_template($file);
     $self->throw('file', "Failed to load file $file during native_load") if ! $doc->{'_js'}->{'code'};
     return 1;
+}
+
+sub _native_undefined_get {
+    my $self = shift;
+    my $code = $self->{'UNDEFINED_GET'};
+    return ref($code) eq 'CODE' ? $code->(@_) : '';
 }
 
 ###----------------------------------------------------------------###
@@ -490,7 +500,7 @@ sub _compile_defer_to_play {
     my ($self, $node, $str_ref, $indent) = @_;
     my $directive = $node->[0];
     die "Invalid node name \"$directive\"" if $directive !~ /^\w+$/;
-
+    die;
     $$str_ref .= "
 ${indent}ref = ".$json->encode($node->[3]).";
 ${indent}\$_call_native('$directive', ref, ".$json->encode($node).", out_ref);";
