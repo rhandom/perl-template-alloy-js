@@ -146,20 +146,11 @@ my $vars = {
 print "Benchmarks with '$tmpl' (datasize=$n with no pre-compile)\n";
 cmpthese timethese -1 => {
     Xslate => sub {
-    local $Template::Alloy::JS::js_context;
-    local $Template::Alloy::JS::js_self;
-    local $Template::Alloy::JS::js_a;
-    local $Template::Alloy::JS::js_v;
-    local $Template::Alloy::JS::js_m;
         my $body = Text::Xslate->new(type=>'text',syntax=>'TTerse',module=>[qw(Text::Xslate::Bridge::TT2)],path=>[$path],cache=>0)->render("$tmpl.tt", $vars);
         return;
     },
     TJ => sub {
-    local $Template::Alloy::JS::js_context;
-    local $Template::Alloy::JS::js_self;
-    local $Template::Alloy::JS::js_a;
-    local $Template::Alloy::JS::js_v;
-    local $Template::Alloy::JS::js_m;
+        local $Template::Alloy::JS::js_context;
         my $body = '';
         Template::Alloy->new(COMPILE_JS=>1,INCLUDE_PATH=>[$path])->process_simple("$tmpl.tt", $vars, \$body);
         return;
@@ -189,20 +180,11 @@ print "\n";
 print "Benchmarks with '$tmpl' (datasize=$n with pre-compile)\n";
 cmpthese timethese -1 => {
     Xslate => sub {
-    local $Template::Alloy::JS::js_context;
-    local $Template::Alloy::JS::js_self;
-    local $Template::Alloy::JS::js_a;
-    local $Template::Alloy::JS::js_v;
-    local $Template::Alloy::JS::js_m;
         my $body = Text::Xslate->new(type=>'text',syntax=>'TTerse',module=>[qw(Text::Xslate::Bridge::TT2)],path=>[$path],cache=>1,cache_dir=>'.xslate_cache')->render("$tmpl.tt", $vars);
         return;
     },
     TJ => sub {
-    local $Template::Alloy::JS::js_context;
-    local $Template::Alloy::JS::js_self;
-    local $Template::Alloy::JS::js_a;
-    local $Template::Alloy::JS::js_v;
-    local $Template::Alloy::JS::js_m;
+        local $Template::Alloy::JS::js_context;
         my $body = '';
         Template::Alloy->new(COMPILE_JS=>1,INCLUDE_PATH=>[$path],COMPILE_DIR=>'.tj')->process_simple("$tmpl.tt", $vars, \$body);
         return;
