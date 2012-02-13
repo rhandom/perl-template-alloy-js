@@ -90,18 +90,11 @@ sub parse_tree_jsr {
 }
 
 our $js_self;
-our $js_a;
-our $js_v;
-our $js_m;
 sub process_js {
     my $self = shift;
     local $self->{'SYNTAX'} = 'js';
     local $self->{'COMPILE_JS'} = 1 if ! $self->{'COMPILE_JS'};
 #    local $js_context;
-#    local $js_self;
-#    local $js_a;
-#    local $js_v;
-#    local $js_m;
     return $self->process_simple(@_);
 }
 
@@ -230,24 +223,10 @@ sub load_js {
         $ctx->bind(say => sub { print $_[0],"\n" });
         $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
         $ctx->bind('$_call_native' => \&_call_native);
-        $ctx->eval('function $_n(n) {n==null?0:parseFloat(n)}');
-    }
 
-    if (!$js_a) {
         (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
         $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
-        $js_a=1;
     }
-    if (!$js_v && (!$self->{'SYNTAX'} || $self->{'SYNTAX'} ne 'js')) {
-        (my $file = __FILE__) =~ s|JS\.pm$|vmethods.js|;
-        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript vmethods: $@") if $@;
-        $js_v=1;
-    }
-#    if (!$js_m) {
-#        (my $file = __FILE__) =~ s|JS\.pm$|md5.js|;
-#        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript md5: $@") if $@;
-#        $js_m=1;
-#    }
 
     my $callback = $ctx->eval(qq{
         alloy.register_template('$doc->{name}',$$js);
@@ -274,6 +253,7 @@ sub load_js {
             my $e = ref($out) eq 'HASH' && $out->{'_call_native_throw'}  || {};
             my $type = ref($e) eq 'HASH' && $e->{'type'} || 'jsthrow';
             my $info = ref($e) eq 'HASH' && $e->{'info'} || $e;
+            $info = $json->encode($info) if ref($info) && ref($info) ne 'ARRAY';
             $self->throw($type, $info);
         }
         return 1;
@@ -284,31 +264,38 @@ sub load_js {
 
 sub _call_native {
     my $meth = shift;
-    my $code = __PACKAGE__->can("_native_$meth") || return {_call_native_error => ['undef', "Unknown method $meth"]};
+    my $code = __PACKAGE__->can("_native_$meth") || return {_call_native_error => [undef => "Unknown method $meth"]};
     my $val;
     return $val if eval { $val = $code->($js_self, @_); 1 };
     my $err = $@;
     return {_call_native_error => [$err->type, $err->info]} if UNIVERSAL::can($err,'type');
-    return {_call_native_error => ['native', "trouble running method $meth: $@"]};
+    return {_call_native_error => [native => "trouble running native method $meth: $@"]};
 }
 
 sub _native_insert {
     my ($self, $files)  = @_;
-    $self->throw('file', 'NO_INCLUDES was set during an INSERT directive') if $self->{'NO_INCLUDES'};
+    $self->throw(file => 'NO_INCLUDES was set during an INSERT directive') if $self->{'NO_INCLUDES'};
     return join '', map {${$self->slurp($self->include_filename($_))}} @$files;
 }
 
 sub _native_load {
     my ($self, $file) = @_;
     my $doc = $self->load_template($file);
-    $self->throw('file', "Failed to load file $file during native_load") if ! $doc->{'_js'}->{'code'};
+    $self->throw(file => "Failed to load file $file during native_load") if ! $doc->{'_js'}->{'code'};
     return 1;
+}
+
+sub _native_load_js {
+    my ($self, $jsfile) = @_;
+    $self->throw(undef => "Invalid jsfile \"$jsfile\"") if $jsfile !~ /^\w+$/;
+    (my $file = __FILE__) =~ s|JS\.pm$|$jsfile.js|;
+    return ${ $self->slurp($file) };
 }
 
 sub _native_undefined_get {
     my $self = shift;
     my $code = $self->{'UNDEFINED_GET'};
-    return ref($code) eq 'CODE' ? $code->(@_) : '';
+    return ref($code) ne 'CODE' ? '' : $code->(@_);
 }
 
 ###----------------------------------------------------------------###
@@ -410,7 +397,10 @@ sub compile_expr_js { _compile_expr_js($_[0],$_[1]) }
 sub _compile_expr_js {
     my ($s,$v,$nctx,$sctx) = @_;
     if (! ref $v) {
-        return $v*1 if $nctx;
+        if ($nctx) {
+            no warnings;
+            return $v*1;
+        }
         $v .= '' if $sctx; # force numbers to str
         return $json->encode($v);
     }
@@ -492,6 +482,8 @@ sub _encode {
 ${INDENT}if (!(ref instanceof Array)) return ref;
 ${INDENT}if (!ref[ref.length-1]) ref[ref.length-1]=[]; var args=ref[ref.length-1];
 ${INDENT}return function () { for (var i=0;i<arguments.length;i++) args.push(arguments[i]); return alloy.get(ref) }; })()"
+        : ($op eq '$()') ? "alloy.get(".$json->encode($v->[2]).")" # V8 only supports scalar
+        : ($op eq '@()') ? die("@() context is not available via ".__PACKAGE__."\n")
         : die "Unimplemented Op (@$v)";
     return $_[2] ? $n : "[null,$n]";
 }
