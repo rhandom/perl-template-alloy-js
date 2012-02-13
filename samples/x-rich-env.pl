@@ -197,18 +197,18 @@ cmpthese timethese -1 => {
   ok 5 - TTX: Template::Toolkit with XS
   Benchmarks with 'include' (datasize=100)
   Benchmark: running TA, TJ, TP, TT, TTX, Xslate for at least 1 CPU seconds...
-          TA:  1 wallclock secs ( 1.04 usr +  0.00 sys =  1.04 CPU) @ 106.73/s (n=111)
-          TJ:  1 wallclock secs ( 1.04 usr +  0.01 sys =  1.05 CPU) @ 752.38/s (n=790)
+          TA:  1 wallclock secs ( 1.03 usr +  0.00 sys =  1.03 CPU) @ 107.77/s (n=111)
+          TJ:  1 wallclock secs ( 1.10 usr +  0.00 sys =  1.10 CPU) @ 813.64/s (n=895)
           TP:  2 wallclock secs ( 1.10 usr +  0.00 sys =  1.10 CPU) @ 108.18/s (n=119)
-          TT:  1 wallclock secs ( 1.11 usr +  0.01 sys =  1.12 CPU) @ 106.25/s (n=119)
-         TTX:  2 wallclock secs ( 1.04 usr +  0.01 sys =  1.05 CPU) @ 212.38/s (n=223)
-      Xslate:  1 wallclock secs ( 1.07 usr +  0.01 sys =  1.08 CPU) @ 777.78/s (n=840)
-          Rate     TT     TA     TP    TTX     TJ Xslate
-  TT     106/s     --    -0%    -2%   -50%   -86%   -86%
-  TA     107/s     0%     --    -1%   -50%   -86%   -86%
-  TP     108/s     2%     1%     --   -49%   -86%   -86%
-  TTX    212/s   100%    99%    96%     --   -72%   -73%
-  TJ     752/s   608%   605%   595%   254%     --    -3%
-  Xslate 778/s   632%   629%   619%   266%     3%     --
+          TT:  1 wallclock secs ( 1.04 usr +  0.00 sys =  1.04 CPU) @ 106.73/s (n=111)
+         TTX:  1 wallclock secs ( 1.04 usr +  0.00 sys =  1.04 CPU) @ 215.38/s (n=224)
+      Xslate:  1 wallclock secs ( 1.06 usr +  0.00 sys =  1.06 CPU) @ 791.51/s (n=839)
+          Rate     TT     TA     TP    TTX Xslate     TJ
+  TT     107/s     --    -1%    -1%   -50%   -87%   -87%
+  TA     108/s     1%     --    -0%   -50%   -86%   -87%
+  TP     108/s     1%     0%     --   -50%   -86%   -87%
+  TTX    215/s   102%   100%    99%     --   -73%   -74%
+  Xslate 792/s   642%   634%   632%   267%     --    -3%
+  TJ     814/s   662%   655%   652%   278%     3%     --
 
 =cut
