@@ -229,9 +229,9 @@ sub load_js {
     }
 
     my $callback = $ctx->eval(qq{
-        alloy.register_template('$doc->{name}',$$js);
-        (function (out_ref) { try { var r = alloy.process('$doc->{name}', out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
-    }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{name}: $@");
+        alloy.register_template('$doc->{_filename}',$$js);
+        (function (out_ref) { try { var r = alloy.process('$doc->{_filename}', out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
+    }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{_filename}: $@");
 
     return {code => sub {
         my ($self, $out_ref) = @_;
@@ -240,11 +240,15 @@ sub load_js {
         $ctx->bind('$_env'  => {
             QR_PRIVATE        => $Template::Alloy::QR_PRIVATE ? "^[_.]" : 0,
             SYNTAX            => $self->{'SYNTAX'},
-            VMETHOD_FUNCTIONS => $self->{'VMETHOD_FUNCTIONS'},
             WHILE_MAX         => $Template::Alloy::WHILE_MAX,
+            MAX_EVAL_RECURSE  => $self->{'MAX_EVAL_RECURSE'}  || $Template::Alloy::MAX_EVAL_RECURSE,
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
-            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT)),
+            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS)),
             (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES STRICT TRIM UNDEFINED_GET)),
+#our @CONFIG_COMPILETIME = qw(SYNTAX CACHE_STR_REFS ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP ENCODING
+#                             SEMICOLONS V1DOLLAR V2PIPE V2EQUALS AUTO_EVAL SHOW_UNDEFINED_INTERP AUTO_FILTER);
+#our @CONFIG_RUNTIME     = qw(ADD_LOCAL_PATH CALL_CONTEXT DUMP VMETHOD_FUNCTIONS STRICT);
+#our $EVAL_CONFIG        = {map {$_ => 1} @CONFIG_COMPILETIME, @CONFIG_RUNTIME};
         });
         my $out = $callback->([$$out_ref]);
         if (ref($out) eq 'ARRAY') {
@@ -279,8 +283,16 @@ sub _native_insert {
 }
 
 sub _native_load {
-    my ($self, $file) = @_;
-    my $doc = $self->load_template($file);
+    my ($self, $file, $extra_str, $extra_args) = @_;
+    my $doc;
+    if (@_ > 2) {
+        my $args = ref($extra_args) eq 'HASH' ? $extra_args : {};
+        delete @{ $args }{ grep {! $Template::Alloy::EVAL_CONFIG->{$_}} keys %$args };
+        local @$self{ keys %$args } = values %$args;
+        $doc = $self->load_template(\$extra_str);
+    } else {
+        $doc = $self->load_template($file);
+    }
     $self->throw(file => "Failed to load file $file during native_load") if ! $doc->{'_js'}->{'code'};
     return 1;
 }
