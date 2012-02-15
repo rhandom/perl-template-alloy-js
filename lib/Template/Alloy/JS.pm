@@ -246,10 +246,6 @@ sub load_js {
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
             (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS)),
             (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES STRICT TRIM UNDEFINED_GET)),
-#our @CONFIG_COMPILETIME = qw(SYNTAX CACHE_STR_REFS ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP ENCODING
-#                             SEMICOLONS V1DOLLAR V2PIPE V2EQUALS AUTO_EVAL SHOW_UNDEFINED_INTERP AUTO_FILTER);
-#our @CONFIG_RUNTIME     = qw(ADD_LOCAL_PATH CALL_CONTEXT DUMP VMETHOD_FUNCTIONS STRICT);
-#our $EVAL_CONFIG        = {map {$_ => 1} @CONFIG_COMPILETIME, @CONFIG_RUNTIME};
         });
         my $out = $callback->([$$out_ref]);
         if (ref($out) eq 'ARRAY') {
@@ -309,6 +305,21 @@ sub _native_undefined_get {
     my $self = shift;
     my $code = $self->{'UNDEFINED_GET'};
     return ref($code) ne 'CODE' ? '' : $code->(@_);
+}
+
+sub _native_dump {
+    my ($self, $stuff, $from, $to, $name) = @_;
+    $stuff = [$stuff] if ref($stuff) ne 'ARRAY';
+    local $self->{'_vars'} = $js_context->eval('$_vars') if !@$stuff;
+    my @dump = ([[undef, '{}'],0], map {[[undef, '-temp-', $_], 0]} @$stuff);
+    my $node = ['DUMP', $from, $to]; # only as insecure as INCLUDE
+
+    require Template::Alloy::Play;
+    my $out = "";
+    my $docs = $self->{'GLOBAL_CACHE'} || $self->{'_documents'}; $docs = $Template::Alloy::GLOBAL_CACHE if ! ref $docs;
+    local $self->{'_component'} = $docs->{$name} if $docs->{$name};
+    $Template::Alloy::Play::DIRECTIVES->{'DUMP'}->($self, \@dump, $node, \$out);
+    return $out;
 }
 
 ###----------------------------------------------------------------###
@@ -517,13 +528,13 @@ ${INDENT}return function () { for (var i=0;i<arguments.length;i++) args.push(arg
 
 sub _compile_defer_to_play {
     my ($self, $node, $str_ref, $indent) = @_;
-    my $directive = $node->[0];
+    my $directive = uc $node->[0];
     die "Invalid node name \"$directive\"" if $directive !~ /^\w+$/;
-    die;
-    $$str_ref .= "
-${indent}ref = ".$json->encode($node->[3]).";
-${indent}\$_call_native('$directive', ref, ".$json->encode($node).", out_ref);";
 
+    $$str_ref .= "
+${indent}ref = ".$json->encode($node).";
+${indent}ref = alloy.call_native('$directive', ref);
+${indent}if (typeof ref !== 'undefined') out_ref[0] += ref;";
     return;
 }
 
@@ -573,7 +584,18 @@ ${indent}out_ref[0] = '';";
 
 sub compile_js_CONFIG {
     my ($self, $node, $str_ref, $indent) = @_;
-    _compile_defer_to_play($self, $node, $str_ref, $indent);
+    my $config = $node->[3];
+    my ($named, @the_rest) = @$config;
+
+    $$str_ref .= "
+${INDENT}ref = "._compile_expr_js($self, $named).";
+${INDENT}for (var i in ref) if (ref.hasOwnProperty(i)) alloy.config(i.toUpperCase(), ref[i]);";
+# TODO DUMP and ADD_LOCAL_PATH need to hit the server
+#use CGI::Ex::Dump qw(debug);
+#debug $named, \@the_rest;
+#exit;
+#    ### show what current values are
+#    $$out_ref .= join("\n", map { $rtime{$_} ? ("CONFIG $_ = ".(defined($self->{$_}) ? $self->{$_} : 'undef')) : $_ } @the_rest);
 }
 
 sub compile_js_DEBUG {
@@ -599,7 +621,14 @@ sub compile_js_DEFAULT {
 
 sub compile_js_DUMP {
     my ($self, $node, $str_ref, $indent) = @_;
-    _compile_defer_to_play($self, $node, $str_ref, $indent);
+    my $dump = $node->[3];
+    my ($named, @dump) = @$dump;
+    push @dump, $named if @{ $named->[0] } > 2;
+    my $doc  = $self->{'_component'};
+    my $name = $doc->{'_is_str_ref'} ? $doc->{'_filename'} : $doc->{'name'};
+    $$str_ref .= "
+${indent}ref = [".join(", ", map {_compile_expr_js($self, $_)} @dump)."];
+${indent}out_ref[0] += alloy.call_native('dump', ref, ".$json->encode($node->[1]).", ".$json->encode($node->[2]).", ".$json->encode($name).");";
 }
 
 sub compile_js_GET {
