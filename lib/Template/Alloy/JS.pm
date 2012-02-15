@@ -228,10 +228,11 @@ sub load_js {
         $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
     }
 
+    my $name = $json->encode($doc->{'_is_str_ref'} ? $doc->{'_filename'} : $doc->{'name'});
     my $callback = $ctx->eval(qq{
-        alloy.register_template('$doc->{_filename}',$$js);
-        (function (out_ref) { try { var r = alloy.process('$doc->{_filename}', out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
-    }) || $self->throw('compile_js', "Trouble loading compiled js for $doc->{_filename}: $@");
+        alloy.register_template($name,$$js);
+        (function (out_ref) { try { var r = alloy.process($name, out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
+    }) || $self->throw('compile_js', "Trouble loading compiled js for $name: $@");
 
     return {code => sub {
         my ($self, $out_ref) = @_;
