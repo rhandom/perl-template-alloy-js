@@ -620,12 +620,12 @@ sub compile_js_EVAL {
     my ($self, $node, $str_ref, $indent) = @_;
     my ($named, @strs) = @{ $node->[3] };
 
-    $$str_ref .= "
-${indent}foreach (".join(",\n", map {$json->encode($_)} @strs).") {
-${indent}${INDENT}my \$str = \$self->play_expr(\$_);
-${indent}${INDENT}next if ! defined \$str;
-${indent}${INDENT}\$\$out_ref .= \$self->play_expr([[undef, '-temp-', \$str], 0, '|', 'eval', [".$json->encode($named)."]]);
-${indent}}";
+    for my $str (@strs) {
+        $$str_ref .= "
+${indent}ref = "._compile_expr_js($self, $str).";
+${indent}if (typeof ref !== 'undefined')
+${indent}${INDENT}out_ref[0] += alloy.process_s(ref, ["._compile_expr_js($self, $named)."])";
+    }
 }
 
 sub compile_js_FILTER {
