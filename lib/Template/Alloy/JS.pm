@@ -360,6 +360,7 @@ sub _node_info {
 
 sub compile_tree_js {
     my ($self, $tree, $indent) = @_;
+    local $self->{'_compile_args'};
     my $code = '';
     # node contains (0: DIRECTIVE,
     #                1: start_index,
@@ -419,15 +420,25 @@ sub _compile_expr_js {
     my $name = $v->[0];
     my $args = $v->[1];
     return _encode($s,$name,1) if @$v == 2 && ref($name) && !defined($name->[0]) && (! $args || $name->[1] ne '->');
-    my @var = (ref($name) ? _encode($s,$name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($s,$_)} @$args).']' : 0);
+    my @var = (ref($name) ? _encode($s,$name) : $json->encode($name), _compile_args($s, $args));
     my $i = 2;
     while ($i < @$v) {
         my $dot = $v->[$i++];
         $name = $v->[$i++];
         $args = $v->[$i++];
-        push @var, "'$dot'", ref($name) ? _encode($s,$name) : $json->encode($name), $args ? '['.join(',',map{_compile_expr_js($s,$_)} @$args).']' : 0;
+        push @var, "'$dot'", ref($name) ? _encode($s,$name) : $json->encode($name), _compile_args($s, $args);
     }
+    $s->{'_compile_args'} ||= 1;
     return 'alloy.get(['.join(',',@var).']'.($nctx?',{},true':'').')';
+}
+sub _compile_args {
+    my ($s, $args) = @_;
+    return 0 if !$args;
+    return '['.join(',',map{
+        local $s->{'_compile_args'} = 0;
+        my $arg = _compile_expr_js($s,$_);
+        $s->{'_compile_args'} ? "function(){return $arg}" : $arg;
+    } @$args).']';
 }
 sub _encode {
     my ($s,$v) = @_;
@@ -460,7 +471,7 @@ sub _encode {
         : ($op eq '<=>')? '(function(){var v1='._compile_expr_js($s,$v->[2],1).';var v2='._compile_expr_js($s,$v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
         : ($op eq 'cmp')? '(function(){var v1=""+'._compile_expr_js($s,$v->[2]).';var v2='._compile_expr_js($s,$v->[3]).';return v1<v2 ? -1 : v1>v2 ? 1 : 0})()'
         : ($op eq '=')  ? 'alloy.set('.$json->encode($v->[2]).','._compile_expr_js($s,$v->[3]).')'
-        : ($op eq 'qr') ? '(new RegExp('._compile_expr_js($s,$v->[2]).','._compile_expr_js($s,$v->[3]).'))'
+        : ($op eq 'qr') ? 'function(){return new RegExp('._compile_expr_js($s,$v->[2]).','._compile_expr_js($s,$v->[3]).')}'
         : ($op eq '!' || $op eq 'not' || $op eq 'NOT') ? '!'._compile_expr_js($s,$v->[2])
         : ($op eq '&&' || $op eq 'and') ? '('._compile_expr_js($s,$v->[2]).'&&'._compile_expr_js($s,$v->[3]).')'
         : ($op eq '||' || $op eq 'or')  ? '('._compile_expr_js($s,$v->[2]).'||'._compile_expr_js($s,$v->[3]).')'
@@ -490,10 +501,13 @@ sub _encode {
                 : '(function () { var a = [];'.join(' ',map{!ref($_) ? "a.push($_);" : "for(var i=$_->[0];i<=$_->[1];i++) a.push(i);"}@e).' return a })()';
         }
         : ($op eq '->') ? 'function () { return '._macro_sub_js($s,$v->[2],$v->[3],'  ').' }'
-        : ($op eq '\\') ? "(function () { var ref = alloy.get(".$json->encode($v->[2]).", {return_ref:1});
+        : ($op eq '\\') ? do {
+            (my $var = _compile_expr_js($s, $v->[2])) =~ s/\)$/,{return_ref:1})/;
+            $var = "(function () { var ref = $var;
 ${INDENT}if (!(ref instanceof Array)) return ref;
 ${INDENT}if (!ref[ref.length-1]) ref[ref.length-1]=[]; var args=ref[ref.length-1];
 ${INDENT}return function () { for (var i=0;i<arguments.length;i++) args.push(arguments[i]); return alloy.get(ref) }; })()"
+        }
         : ($op eq '$()') ? "alloy.get(".$json->encode($v->[2]).")" # V8 only supports scalar
         : ($op eq '@()') ? die("@() context is not available via ".__PACKAGE__."\n")
         : die "Unimplemented Op (@$v)";
