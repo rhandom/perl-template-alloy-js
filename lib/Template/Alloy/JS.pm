@@ -12,7 +12,7 @@ use Template::Alloy;
 our @ISA = qw(Template::Alloy); # for objects blessed as Template::Alloy::JS
 
 eval { require JSON } || die "Cannot load JSON library used by Template::Alloy::JS: $@";
-my $json = eval { JSON->new->allow_nonref } || eval { JSON->new };
+my $json = eval { JSON->new->allow_nonref->allow_unknown } || eval { JSON->new };
 die "The loaded JSON library does not support the encode method needed by Template::Alloy::JS\n" if ! $json || !$json->can('encode');
 our $js_context;
 
@@ -254,7 +254,7 @@ sub load_js {
             my $e = ref($out) eq 'HASH' && $out->{'_call_native_throw'}  || {};
             my $type = ref($e) eq 'HASH' && $e->{'type'} || 'jsthrow';
             my $info = ref($e) eq 'HASH' && $e->{'info'} || $e;
-            $info = $json->encode($info) if ref($info) && ref($info) ne 'ARRAY';
+            $info = eval { $json->encode($info) } || "Error encoding error info: $@" if ref($info) && ref($info) ne 'ARRAY';
             $self->throw($type, $info);
         }
         return 1;
@@ -320,6 +320,14 @@ sub _native_dump {
     local $self->{'_component'} = $docs->{$name} if $docs->{$name};
     $Template::Alloy::Play::DIRECTIVES->{'DUMP'}->($self, \@dump, $node, \$out);
     return $out;
+}
+
+sub _native_config {
+    my ($self, $key, $val) = @_;
+    return 0 if !$Template::Alloy::EVAL_CONFIG->{$key};
+    $self->throw("config.strict", "Cannot disable STRICT once it is enabled") if $key eq 'STRICT' && ! $val;
+    $self->{$key} = $val;
+    return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -588,14 +596,21 @@ sub compile_js_CONFIG {
     my ($named, @the_rest) = @$config;
 
     $$str_ref .= "
-${INDENT}ref = "._compile_expr_js($self, $named).";
-${INDENT}for (var i in ref) if (ref.hasOwnProperty(i)) alloy.config(i.toUpperCase(), ref[i]);";
-# TODO DUMP and ADD_LOCAL_PATH need to hit the server
-#use CGI::Ex::Dump qw(debug);
-#debug $named, \@the_rest;
-#exit;
-#    ### show what current values are
-#    $$out_ref .= join("\n", map { $rtime{$_} ? ("CONFIG $_ = ".(defined($self->{$_}) ? $self->{$_} : 'undef')) : $_ } @the_rest);
+${indent}ref = "._compile_expr_js($self, $named).";
+${indent}for (var k in ref) if (ref.hasOwnProperty(k)) alloy.config(k, ref[k]);"
+        if @{ $named->[0] } > 2;
+
+    for my $i (0 .. $#the_rest) {
+        my $k = $the_rest[$i];
+        if (!$Template::Alloy::EVAL_CONFIG->{$k}) {
+            $$str_ref .= "\n${indent}out_ref[0] += ".$json->encode($k).";";
+        } else {
+            $$str_ref .= "
+${indent}ref = alloy.config(".$json->encode($k).");
+${indent}out_ref[0] += 'CONFIG $k = '+(typeof ref === 'undefined' ? 'undef' : ref);";
+        }
+        $$str_ref .= "out_ref[0] += '\\n';" if $i != $#the_rest;
+    }
 }
 
 sub compile_js_DEBUG {
@@ -775,9 +790,8 @@ ${indent}alloy.insert([".join(',',map{_compile_expr_js($self,$_)} @files)."], ou
 
 sub compile_js_JS {
     my ($self, $node, $str_ref, $indent) = @_;
-    $$str_ref .= "\n${indent}(function (write, vars, env, process) {
+    $$str_ref .= "\n${indent}(function (write, vars, env, process, \$_env, \$_vars, alloy) {
 ${indent}var out_ref = [''];
-${indent}var \$_env, \$_vars, alloy;
 ${indent}$node->[4]->[0]
 ${indent}})(function (s) {out_ref[0]+=s}, \$_vars, \$_env, function (f,a,l,r) { return alloy.process_ex(f,a,l,r ? null : out_ref) })
 ";
@@ -1093,11 +1107,9 @@ sub compile_js_TRY {
     $$str_ref .= "
 ${indent}(function () {
 ${indent}var err;
-//${indent}var out_ref = [''];
 ${indent}try {"
     . $self->compile_tree_js($node->[4], "$indent$INDENT") ."
 ${indent}} catch (e) { err = e };
-//${indent}\$\$out_ref .= \$out;
 ${indent}if (err != null) {";
 
     my $final;
