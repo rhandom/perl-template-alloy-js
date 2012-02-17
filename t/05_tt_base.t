@@ -18,7 +18,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => (! $is_tt ? 993 : 643) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
+use Test::More tests => (! $is_tt ? 1000 : 624) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
 use constant test_taint => 0 && eval { require Taint::Runtime };
 use Data::Dumper;
 
@@ -133,8 +133,6 @@ my $engine_option = "engine_option (".($compile_js ? 'compile_js' : 'tt').")";
 ###----------------------------------------------------------------###
 print "### JS ############################################## $engine_option\n";
 
-#process_ok("[% BLOCK foo; CONFIG STRICT => 1; baz; END; TRY; bam; PROCESS foo; bar; CATCH; error.type; END; bing %] - ok" => 'var.undef - ok'); # restricted to sub components
-
 process_ok('[% JS %] write(3); [% END %]' => '', {tt_config => [EVAL_JS => 1]}) if ! $compile_js;
 if ($compile_js) {
 process_ok('[% JS %] write(3); [% END %]' => 3, {tt_config => [EVAL_JS => 1]});
@@ -152,7 +150,6 @@ process_ok('[% JS %] write(alloy ? 1 : 0); [% END %]' => '1', {tt_config => [EVA
 
 process_ok('[% JS %] write(typeof out_ref); [% END %]' => 'undefined', {tt_config => [EVAL_JS => 1]});
 process_ok('[% JS %] write(out_ref ? 1 : 0); [% END %]' => '1', {tt_config => [EVAL_JS => 'raw']});
-
 }
 
 ###----------------------------------------------------------------###
@@ -496,6 +493,8 @@ process_ok("[% n.fmt('% 04.2f') %]" => ' 7.00', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('% +6.2f') %]" => ' +7.00', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%0+6.2f') %]" => '+07.00', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%.5g') %]" => '12345', {n => 12345}) if ! $is_tt;
+
+# these last cases only work in js - not in perl TA
 process_ok("[% n.fmt('%.5g') %]" => qr/^1\.2346e\+0*6$/, {n => 1234567}) if ! $is_tt;
 process_ok("[% sprintf(\"%'<-10d\", 23) %]" => '23<<<<<<<<', {n => 66}) if ! $is_tt && $compile_js;
 process_ok("[% sprintf(\"%+'G015.5d\", 23) %]" => 'GGGGGGGGG+00023', {n => 66}) if ! $is_tt && $compile_js;
@@ -636,13 +635,11 @@ process_ok("[% n FILTER echo = repeat(2) %][% n FILTER \$foo %]" => '1111', {n =
 process_ok("[% n FILTER echo = repeat(2) %][% n | \$foo %]" => '1111', {n => 1, foo => 'echo'});
 process_ok("[% n FILTER echo = repeat(2) %][% n|\$foo.length %]" => '112', {n => 1, foo => 'echo'}) if ! $is_tt;
 
-if (!$compile_js) {
 process_ok('[% "hi" FILTER $foo %]' => 'hihi', {foo => sub {sub {$_[0]x2}}}); # filter via a passed var
 process_ok('[% FILTER $foo %]hi[% END %]' => 'hihi', {foo => sub {sub {$_[0]x2}}}); # filter via a passed var
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => sub {$_[0]x2}}]});
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
-}
 
 process_ok('[% ["0".."9"].pick %]' => qr/^[0-9]/) if ! $is_tt;
 
@@ -887,11 +884,11 @@ process_ok("[% BLOCK b %]Ta-Da[% END %][% self = 'b' %][% INCLUDE \$self self = 
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two' %][% one %]" => 'hi two theretwo');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% INCLUDE foo one = 'two' %][% one %]" => 'hi two there') if ! $five_six;
 
-#process_ok("[% BLOCK foo %]FOO[% IF ! a ; a = 1; PROCESS bar; END %][% END %][% BLOCK bar %]BAR[% PROCESS foo %][% END %][% PROCESS foo %]" => "") if ! $is_tt && ! $use_stream;
+process_ok("[% BLOCK foo %]FOO[% IF ! a ; a = 1; PROCESS bar; END %][% END %][% BLOCK bar %]BAR[% PROCESS foo %][% END %][% PROCESS foo %]" => "") if ! $is_tt && ! $use_stream;
 process_ok("[% BLOCK foo %]FOO[% IF ! a ; a = 1; PROCESS bar; END %][% END %][% BLOCK bar %]BAR[% PROCESS foo %][% END %][% PROCESS foo %]d" => "FOOBAR") if $use_stream;
 process_ok("[% BLOCK foo %]FOO[% IF ! a ; a = 1; PROCESS bar; END %][% END %][% BLOCK bar %]BAR[% PROCESS foo %][% END %][% PROCESS foo %]" => "FOOBARFOO", {tt_config => [RECURSION => 1]});
 
-process_ok('[% a = 23; PROCESS $foo %]' => 'bar 23 baz', {foo => \ "bar [% a %] baz"}) if ! $compile_js; # no way to encode that into the js
+#process_ok('[% a = 23; PROCESS $foo %]' => 'bar 23 baz', {foo => \ "bar [% a %] baz"}); # no way to encode that into the js
 
 ###----------------------------------------------------------------###
 print "### IF / UNLESS / ELSIF / ELSE ###################### $engine_option\n";
@@ -986,18 +983,16 @@ process_ok('[% FOREACH f IN [2,3,4]; FOREACH g IN [6,7,8]; f;g;", "; END; END %]
     package TEST_ARRAY_OBJ;
     sub n { shift->[0] }
 }
-if (! $compile_js) {
-my @objs = map { bless {n => $_}, 'TEST_HASH_OBJ' } 1..3;
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { \@objs }});
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { [$objs[0]] }});
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { @objs }});
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { $objs[0] }});
-@objs = map { bless [$_], 'TEST_ARRAY_OBJ' } 1..3;
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { \@objs }});
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { [$objs[0]] }});
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { @objs }});
-process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { $objs[0] }});
-}
+#my @objs = map { bless {n => $_}, 'TEST_HASH_OBJ' } 1..3;
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { \@objs }});
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { [$objs[0]] }});
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { @objs }});
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { $objs[0] }});
+#@objs = map { bless [$_], 'TEST_ARRAY_OBJ' } 1..3;
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { \@objs }});
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { [$objs[0]] }});
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '123', {foo => sub { @objs }});
+#process_ok('[% FOREACH i IN foo; i.n; END %]' => '1', {foo => sub { $objs[0] }});
 
 ###----------------------------------------------------------------###
 print "### LOOP ############################################ $engine_option\n";
@@ -1174,23 +1169,21 @@ process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone",
 ###----------------------------------------------------------------###
 print "### USE ############################################# $engine_option\n";
 
-if (! $compile_js) {
 my @config_p = (PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1);
 process_ok("[% USE son_of_gun_that_does_not_exist %]one" => '', {tt_config => \@config_p});
-process_ok("[% USE FooTest %]one" => 'one', {tt_config => \@config_p});
-process_ok("[% USE FooTest2 %]one" => 'one', {tt_config => \@config_p});
-process_ok("[% USE FooTest(bar = 'baz') %]one[% FooTest.bar %]" => 'onebarbaz', {tt_config => \@config_p});
-process_ok("[% USE FooTest2(bar = 'baz') %]one[% FooTest2.bar %]" => 'onebarbaz', {tt_config => \@config_p});
-process_ok("[% USE FooTest(bar = 'baz') %]one[% FooTest.bar %]" => 'onebarbaz', {tt_config => \@config_p});
-process_ok("[% USE d = FooTest(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz', {tt_config => \@config_p});
-process_ok("[% USE d.d = FooTest(bar = 'baz') %]one[% d.d.bar %]" => '', {tt_config => \@config_p});
-
-process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => '',     {tt_config => [@config_p, PLUGINS => {a=>'FooTest'}, ]});
-process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => 'one7', {tt_config => [@config_p, PLUGINS => {a=>'FooTest2'},]});
-
-@config_p = (PLUGIN_BASE => ['NonExistant', 'MyTestPlugin'], LOAD_PERL => 1);
-process_ok("[% USE FooTest %]three" => 'three', {tt_config => \@config_p});
-}
+#process_ok("[% USE FooTest %]one" => 'one', {tt_config => \@config_p});
+#process_ok("[% USE FooTest2 %]one" => 'one', {tt_config => \@config_p});
+#process_ok("[% USE FooTest(bar = 'baz') %]one[% FooTest.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+#process_ok("[% USE FooTest2(bar = 'baz') %]one[% FooTest2.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+#process_ok("[% USE FooTest(bar = 'baz') %]one[% FooTest.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+#process_ok("[% USE d = FooTest(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+#process_ok("[% USE d.d = FooTest(bar = 'baz') %]one[% d.d.bar %]" => '', {tt_config => \@config_p});
+#
+#process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => '',     {tt_config => [@config_p, PLUGINS => {a=>'FooTest'}, ]});
+#process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => 'one7', {tt_config => [@config_p, PLUGINS => {a=>'FooTest2'},]});
+#
+#@config_p = (PLUGIN_BASE => ['NonExistant', 'MyTestPlugin'], LOAD_PERL => 1);
+#process_ok("[% USE FooTest %]three" => 'three', {tt_config => \@config_p});
 
 ###----------------------------------------------------------------###
 print "### MACRO ########################################### $engine_option\n";
@@ -1579,35 +1572,6 @@ process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error.type; END; bing 
 }
 
 ###----------------------------------------------------------------###
-print "### SYNTAX ########################################## $engine_option\n";
-
-if (! $is_tt) {
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'alloy']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'tt3']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt2']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
-
-
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
-
-process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
-process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR EXPR='7 == \"7.0\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR EXPR='\"a\" == \"b\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
-
-process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'hte') %] = [% 6 %]" => "6 = 6");
-process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'ht') %] = [% 6 %]" => "");
-process_ok("[% \"<TMPL_VAR NAME='foo'>\"|eval(syntax => 'ht') %] = [% 12 %]" => "12 = 12", {foo => 12});
-
-}
-
-###----------------------------------------------------------------###
 print "### DUMP ############################################ $engine_option\n";
 
 if (! $is_tt) {
@@ -1636,6 +1600,35 @@ local $ENV{'REQUEST_METHOD'} = 0;
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => undef };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => undef };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 0}]});
+}
+
+###----------------------------------------------------------------###
+print "### SYNTAX ########################################## $engine_option\n";
+
+if (! $is_tt) {
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'alloy']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'tt3']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt2']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
+
+
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
+
+process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='7 == \"7.0\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='\"a\" == \"b\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
+
+process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'hte') %] = [% 6 %]" => "6 = 6");
+process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'ht') %] = [% 6 %]" => "");
+process_ok("[% \"<TMPL_VAR NAME='foo'>\"|eval(syntax => 'ht') %] = [% 12 %]" => "12 = 12", {foo => 12});
+
 }
 
 ###----------------------------------------------------------------###
