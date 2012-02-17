@@ -244,7 +244,7 @@ sub load_js {
             WHILE_MAX         => $Template::Alloy::WHILE_MAX,
             MAX_EVAL_RECURSE  => $self->{'MAX_EVAL_RECURSE'}  || $Template::Alloy::MAX_EVAL_RECURSE,
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
-            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS)),
+            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS FILTERS)),
             (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES STRICT TRIM UNDEFINED_GET)),
         });
         my $out = $callback->([$$out_ref]);
@@ -329,6 +329,20 @@ sub _native_config {
     $self->{$key} = $val;
     return 1;
 }
+
+sub _native_dynamic_filter {
+    my ($self, $name, $sub, $args) = @_;
+    ($sub, my $err) = $sub->($self->context, @$args);
+    return $sub if UNIVERSAL::isa($sub, 'CODE');
+    if (! $sub && $err) {
+        $self->throw('filter', $err) if ! UNIVERSAL::can($err, 'type');
+        die $err;
+    } else {
+        $self->throw('filter', "invalid FILTER for '$name' (not a CODE ref)") if ! UNIVERSAL::can($sub, 'type');
+        die $sub;
+    }
+}
+
 
 ###----------------------------------------------------------------###
 
