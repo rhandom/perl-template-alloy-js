@@ -231,7 +231,7 @@ sub load_js {
     my $name = $json->encode($doc->{'_is_str_ref'} ? $doc->{'_filename'} : $doc->{'name'});
     my $callback = $ctx->eval(qq{
         alloy.register_template($name,$$js);
-        (function (out_ref, \$_env) { try { var r = alloy.process($name, out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
+        (function (out_ref, \$_env, \$_vars) { try { var r = alloy.process($name, out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
     }) || $self->throw('compile_js', "Trouble loading compiled js for $name: $@");
 
     return {code => sub {
@@ -716,13 +716,14 @@ sub compile_js_FOR {
     my $i = $self->{'_loop_index'};
     my $code = $self->compile_tree_js($node->[4], "$indent$INDENT");
     $$str_ref .= "
-${indent}var old_loop${i} = \$_vars.loop;
+${indent}var \$_v = alloy.vars();
+${indent}var old_loop${i} = \$_v.loop;
 ${indent}var err;
 ${indent}try {
 ${indent}var loop${i} = ".$self->compile_expr_js($items).";
 ${indent}if (loop${i} == null) loop${i} = [];
 ${indent}if (!loop${i}.get_first) loop${i} = new alloy.iterator(loop${i});
-${indent}\$_vars.loop = loop${i};";
+${indent}\$_v.loop = loop${i};";
     if (! defined $name) {
         $$str_ref .= "
 ${indent}alloy.saveScope();";
@@ -753,7 +754,7 @@ ${indent}} catch (e) { err = e }";
 ${indent}alloy.restoreScope();";
     }
     $$str_ref .= "
-${indent}\$_vars.loop = old_loop${i};
+${indent}\$_v.loop = old_loop${i};
 ${indent}if (err != null) throw err;";
     return;
 }
@@ -801,7 +802,7 @@ sub compile_js_JS {
 
     if ($self->{'EVAL_JS'} =~ /^[Rr][Aa][Ww]$/) {
         push @{ $self->{'_userfunc'} }, '' if ! @{ $self->{'_userfunc'} };
-        $$str_ref .= "\n${indent}(function (write, process, get, set, alloy, out_ref, \$_vars, userfunc, uf_get, uf_set, uf_process) {
+        $$str_ref .= "\n${indent}(function (write, process, get, set, alloy, out_ref, userfunc, uf_get, uf_set, uf_process) {
 ${indent}$node->[4]->[0]
 ${indent}})(function(s){out_ref[0]+=s}, uf_process, uf_get, uf_set, alloy, out_ref)";
     } else {
@@ -835,14 +836,14 @@ sub compile_js_LOOP {
 ${indent}ref = ".$self->compile_expr_js($ref, $indent).";
 ${indent}if (ref) {
 ${indent}${INDENT}var global${i} = !alloy.config('SYNTAX') || alloy.config('SYNTAX') !== 'ht' || alloy.config('GLOBAL_VARS');
-${indent}${INDENT}var old_vars${i} = \$_vars;
+${indent}${INDENT}var oldvars${i}; if (! global${i}) oldvars${i} = alloy.vars();
 ${indent}${INDENT}var items${i}  = ref instanceof Array ? ref : typeof ref == 'object' ? [ref] : [];
 ${indent}${INDENT}var err${i}; try {
 ${indent}${INDENT}var lcv${i} = alloy.config('LOOP_CONTEXT_VARS') && ! alloy.config('QR_PRIVATE');
 ${indent}${INDENT}for (var i${i} = 0, I${i} = items${i}.length-1; i${i} <= I${i}; i${i}++) {
 ${indent}${INDENT}${INDENT}ref = items${i}[i${i}];
 ${indent}${INDENT}${INDENT}if (typeof ref != 'object') throw 'loop - Scalar value used in LOOP';
-${indent}${INDENT}${INDENT}if (! global${i}) \$_vars = ref;
+${indent}${INDENT}${INDENT}if (! global${i}) alloy.vars(ref);
 ${indent}${INDENT}${INDENT}else for (var i in ref) alloy.set(i, ref[i]);
 ${indent}${INDENT}${INDENT}if (lcv${i}) {
 ${indent}${INDENT}${INDENT}${INDENT}alloy.set('__counter__', i${i}+1);
@@ -855,7 +856,7 @@ ${indent}${INDENT}${INDENT}}"
 
 ${indent}${INDENT}}
 ${indent}${INDENT}} catch (e) { err${i} = e }
-${indent}${INDENT}if (!global${i}) \$_vars = old_vars${i};
+${indent}${INDENT}if (!global${i}) alloy.vars(oldvars${i});
 ${indent}${INDENT}if (err${i} != null) throw err;
 ${indent}}";
 }
@@ -1152,8 +1153,8 @@ ${indent}if (err != null) {";
         $$str_ref .= "
 ${indent}${INDENT}if (typeof err != 'object' || ! err.type) err = new alloy.exception('undef', err);
 ${indent}${INDENT}if (err.type == 'stop' || err.type == 'return') throw err;
-${indent}${INDENT}var old_error${i} = \$_vars.error; \$_vars.error = err;
-${indent}${INDENT}var old_e${i} = \$_vars.e; \$_vars.e = err;
+${indent}${INDENT}alloy.set('error', err);
+${indent}${INDENT}alloy.set('e', err);
 ${indent}${INDENT}var index${i};
 ${indent}${INDENT}var names${i} = [";
         my $j = 0;
