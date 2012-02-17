@@ -18,7 +18,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => (! $is_tt ? 3074 : 661) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
+use Test::More tests => (! $is_tt ? 992 : 643) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
 use constant test_taint => 0 && eval { require Taint::Runtime };
 use Data::Dumper;
 
@@ -96,42 +96,64 @@ local $INC{'FooTest2.pm'} = $0;
     sub leave {}      # hacks to allow tt to do the plugins passed via PLUGINS
     sub delocalise {} # hacks to allow tt to do the plugins passed via PLUGINS
 }
+
+my $cctx_last;
+my $cctx_data = {};;
+my $cctx = {
+    last_context => sub { $cctx_last || '' },
+    call_me => sub { $cctx_last = (wantarray ? 'list' : defined(wantarray) ? 'scalar' : 'void').(shift || '') },
+    array   => sub { return my @a = (1, 2, 3) },
+    array2  => sub { return my @a = (4) },
+    list    => sub { return (5, 6, 7) },
+    scalar  => sub { return 8 },
+    dataref => sub { return $cctx_data },
+    clear   => sub { $cctx_last = undef; $cctx_data = {} },
+};
 {
     package CallContext;
-    sub new { my $class = shift; my $args = shift || {}; bless $args, $class }
-    sub last_context { shift->{'last_context'} || '' }
-    sub call_me { my $self = shift; $self->{'last_context'} = (wantarray ? 'list' : defined(wantarray) ? 'scalar' : 'void').(shift || '') }
-    sub array   { return my @a = (1, 2, 3) }
-    sub array2  { return my @a = (4) }
-    sub list    { return (5, 6, 7) }
-    sub scalar  { return 8 }
-    sub dataref { return shift->{'data'} ||= {} }
+    our $AUTOLOAD;
+    sub AUTOLOAD {
+        my $self = shift;
+        my $meth = ($AUTOLOAD =~ /::(\w+)$/) ? $1 : die "Invalid method";
+        return $cctx->{$meth}->(@_) if ref($cctx->{$meth}) eq 'CODE';
+        return $cctx->{$meth} if $cctx->{$meth};
+        die "Invalid method $AUTOLOAD\n" if $meth ne 'DESTROY';
+    }
 }
+my $cctxo = bless {}, 'CallContext';
 
 my $obj  = FooTest2->new;
-my $cctx = CallContext->new;
 my $vars;
 my $stash = {foo => 'Stash', bingo => 'bango'};
 $stash = Template::Stash->new($stash) if eval{require Template::Stash};
 
-for my $opt ('compile_js') {
-    $compile_js   = ($opt eq 'compile_js');
-    next if $is_tt && ($compile_js);
-    my $engine_option = "engine_option ($opt)";
+$compile_js = !$is_tt;
+my $engine_option = "engine_option (".($compile_js ? 'compile_js' : 'tt').")";
 
 ###----------------------------------------------------------------###
 print "### JS ############################################## $engine_option\n";
 
-process_ok('[% JS %] write(3); [% END %]' => '') if ! $compile_js;
+#process_ok("[% BLOCK foo; CONFIG STRICT => 1; baz; END; TRY; bam; PROCESS foo; bar; CATCH; error.type; END; bing %] - ok" => 'var.undef - ok'); # restricted to sub components
+
+process_ok('[% JS %] write(3); [% END %]' => '', {tt_config => [EVAL_JS => 1]}) if ! $compile_js;
 if ($compile_js) {
-process_ok('[% JS %] write(3); [% END %]' => 3);
+process_ok('[% JS %] write(3); [% END %]' => 3, {tt_config => [EVAL_JS => 1]});
+process_ok('[% JS %] write(get("foo")); [% END %]' => 7, {foo=>7, tt_config => [EVAL_JS => 1]});
+process_ok('[% JS %] set("foo", 8); write(get("foo")); [% END %]' => 8, {tt_config => [EVAL_JS => 1]});
 process_ok('[% JS %]
   var n = [];
   for (var i = 0; i < 7; i++) n.push(i);
   write(n.join("-"));
-[% END %]' => "0-1-2-3-4-5-6");
+[% END %]' => "0-1-2-3-4-5-6", {tt_config => [EVAL_JS => 1]});
+process_ok('[% n = JS %] write(42); return 67; [% END %]([% n %])' => '(42)', {tt_config => [EVAL_JS => 1]});
+
+process_ok('[% JS %] write(typeof alloy); [% END %]' => 'undefined', {tt_config => [EVAL_JS => 1]});
+process_ok('[% JS %] write(alloy ? 1 : 0); [% END %]' => '1', {tt_config => [EVAL_JS => 'raw']});
+
+process_ok('[% JS %] write(typeof out_ref); [% END %]' => 'undefined', {tt_config => [EVAL_JS => 1]});
+process_ok('[% JS %] write(out_ref ? 1 : 0); [% END %]' => '1', {tt_config => [EVAL_JS => 'raw']});
+
 }
-process_ok('[% n = JS %] write(42); return 67; [% END %]([% n %])' => '(42)');
 
 ###----------------------------------------------------------------###
 print "### GET ############################################# $engine_option\n";
@@ -1239,66 +1261,88 @@ process_ok('[% ${"con${"s"}tants"}.harry %]' => 'foo', {constants => {harry => '
 ###----------------------------------------------------------------###
 print "### CONTEXT ######################################### $engine_option\n";
 
-#$cctx->{'bang'} = 'bing';
+$cctx->{'bang'} = 'bing';
 #process_ok("[% CALL cctx.call_me  %][% cctx.last_context %]" => "list", {cctx => $cctx});
 #process_ok("[% cctx.array  %]" => qr{^ARRAY}, {cctx => $cctx});
 #process_ok("[% cctx.array2 %]" => "4",        {cctx => $cctx});
 #process_ok("[% cctx.list   %]" => qr{^ARRAY}, {cctx => $cctx});
-#process_ok("[% cctx.scalar %]" => "8",        {cctx => $cctx});
-#process_ok("[% cctx.bang   %]" => "bing",     {cctx => $cctx});
-#
-#if (! $is_tt) {
-#    delete $cctx->{'last_context'};
+process_ok("[% cctx.scalar %]" => "8",        {cctx => $cctx});
+process_ok("[% cctx.bang   %]" => "bing",     {cctx => $cctx});
+
+if (! $is_tt) {
+    $cctx->{'clear'}->();
 #    process_ok('[% CALL cctx.call_me %][% cctx.last_context %]'    => "list",   {cctx => $cctx});
 #    process_ok('[% CALL @(cctx.call_me) %][% cctx.last_context %]' => "list",   {cctx => $cctx});
-#    process_ok('[% CALL $(cctx.call_me) %][% cctx.last_context %]' => "scalar", {cctx => $cctx});
-#    process_ok('[% CALL call_cctx %][% cctx.last_context %]'    => "list",   {cctx => $cctx, call_cctx => sub { $cctx->call_me }});
-#    process_ok('[% CALL @(call_cctx) %][% cctx.last_context %]' => "list",   {cctx => $cctx, call_cctx => sub { $cctx->call_me }});
-#    process_ok('[% CALL $(call_cctx) %][% cctx.last_context %]' => "scalar", {cctx => $cctx, call_cctx => sub { $cctx->call_me }});
+    process_ok('[% CALL $(cctx.call_me) %][% cctx.last_context %]' => "scalar", {cctx => $cctx});
+#    process_ok('[% CALL call_cctx %][% cctx.last_context %]'    => "list",   {cctx => $cctx, call_cctx => sub { $cctx->{'call_me'}->() }});
+#    process_ok('[% CALL @(call_cctx) %][% cctx.last_context %]' => "list",   {cctx => $cctx, call_cctx => sub { $cctx->{'call_me'}->() }});
+    process_ok('[% CALL $(call_cctx) %][% cctx.last_context %]' => "scalar", {cctx => $cctx, call_cctx => sub { $cctx->{'call_me'}->() }});
 #    process_ok('[% CALL cctx.call_me %][% cctx.last_context %]' => "list",   {cctx => $cctx, tt_config => [CALL_CONTEXT => 'smart']});
-#    process_ok('[% CALL cctx.call_me %][% cctx.last_context.0 %]' => "list",   {cctx => $cctx, tt_config => [CALL_CONTEXT => 'list']});
-#    process_ok('[% CALL cctx.call_me %][% cctx.last_context %]' => "scalar", {cctx => $cctx, tt_config => [CALL_CONTEXT => 'item']});
-#    process_ok('[% cctx.array %]'    => qr{^ARRAY}, {cctx => $cctx});
-#    process_ok('[% @(cctx.array) %]' => qr{^ARRAY}, {cctx => $cctx});
-#    process_ok('[% $(cctx.array) %]' => '3',        {cctx => $cctx});
+#    process_ok('[% CALL cctx.call_me %][% cctx.last_context.0 %]' => "list", {cctx => $cctx, tt_config => [CALL_CONTEXT => 'list']});
+    process_ok('[% CALL cctx.call_me %][% cctx.last_context %]' => "scalar", {cctx => $cctx, tt_config => [CALL_CONTEXT => 'item']});
+#    process_ok('[% cctx.array %]'    => qr{^ARRAY},  {cctx => $cctx});
+#    process_ok('[% @(cctx.array) %]' => qr{^ARRAY},  {cctx => $cctx});
+    process_ok('[% $(cctx.array) %]' => '3',         {cctx => $cctx});
 #    process_ok('[% cctx.array2 %]'    => '4',        {cctx => $cctx});
 #    process_ok('[% @(cctx.array2) %]' => qr{^ARRAY}, {cctx => $cctx});
-#    process_ok('[% $(cctx.array2) %]' => '1',        {cctx => $cctx});
-#    process_ok('[% cctx.list %]'    => qr{^ARRAY}, {cctx => $cctx});
-#    process_ok('[% @(cctx.list) %]' => qr{^ARRAY}, {cctx => $cctx});
-#    process_ok('[% $(cctx.list) %]' => '7',        {cctx => $cctx});
-#    process_ok('[% cctx.scalar %]'    => '8',        {cctx => $cctx});
+    process_ok('[% $(cctx.array2) %]' => '1',        {cctx => $cctx});
+#    process_ok('[% cctx.list %]'    => qr{^ARRAY},   {cctx => $cctx});
+#    process_ok('[% @(cctx.list) %]' => qr{^ARRAY},   {cctx => $cctx});
+    process_ok('[% $(cctx.list) %]' => '7',          {cctx => $cctx});
+    process_ok('[% cctx.scalar %]'    => '8',        {cctx => $cctx});
 #    process_ok('[% @(cctx.scalar) %]' => qr{^ARRAY}, {cctx => $cctx});
-#    process_ok('[% $(cctx.scalar) %]' => '8',        {cctx => $cctx});
-#    process_ok('[% cctx.bang   %] ~'    => 'bing ~',     {cctx => $cctx});
-#    process_ok('[% @(cctx.bang)   %] ~' => '',     {cctx => $cctx});
-#    process_ok('[% $(cctx.bang)   %] ~' => '',     {cctx => $cctx});
-#}
-#
-#delete $cctx->{'bang'};
-##process_ok("[% cctx.data = 1 %] ~" => "",   {cctx => $cctx})   if $is_tt; # TT lets you read but not write - weird
-#process_ok("[% cctx.bang = 1 %] ~" => " ~", {cctx => $cctx});
-#delete $cctx->{'data'};
-#process_ok("[% cctx.dataref.foo = 7; cctx.dataref.foo %]" => "7", {cctx => $cctx});
-#
-#if (! $is_tt) {
-#    process_ok('[% SET cctx.call_me    = 2 %][% cctx.last_context %]' => "list2", {cctx => $cctx});
-#    delete $cctx->{'last_context'};
-#    process_ok('[% CALL @(cctx.call_me = 3) %][% cctx.last_context %]' => "list3", {cctx => $cctx});
-#    delete $cctx->{'last_context'};
-#    process_ok('[% CALL $(cctx.call_me = 4) %][% cctx.last_context %]' => "scalar4", {cctx => $cctx});
-#    delete $cctx->{'last_context'};
-#    process_ok('[% CONFIG CALL_CONTEXT => "list"; SET cctx.call_me = 3; CONFIG CALL_CONTEXT => "smart" %][% cctx.last_context %]' => "list3", {cctx => $cctx});
-#    delete $cctx->{'last_context'};
-#    process_ok('[% CONFIG CALL_CONTEXT => "item"; SET cctx.call_me = 4 %][% cctx.last_context %]' => "scalar4", {cctx => $cctx});
-#    delete $cctx->{'data'};
+    process_ok('[% $(cctx.scalar) %]' => '8',        {cctx => $cctx});
+    process_ok('[% cctx.bang   %] ~'    => 'bing ~', {cctx => $cctx});
+#    process_ok('[% @(cctx.bang)   %] ~' => 'bing ~', {cctx => $cctx});
+    process_ok('[% $(cctx.bang)   %] ~' => 'bing ~', {cctx => $cctx});
+    $cctx->{'clear'}->();
+#    process_ok('[% CONFIG CALL_CONTEXT => "list"; CALL cctx.call_me; CONFIG CALL_CONTEXT => "smart" %][% cctx.last_context %]' => "list", {cctx => $cctx});
+    $cctx->{'clear'}->();
+#    process_ok('[% CONFIG CALL_CONTEXT => "item"; CALL cctx.call_me %][% cctx.last_context %]' => "scalar", {cctx => $cctx});
+    delete $cctx->{'data'};
 #    process_ok('[% cctx.dataref.0.foo = 7; cctx.dataref.0.foo %]' => "7", {cctx => $cctx});
-#    delete $cctx->{'data'};
+    delete $cctx->{'data'};
 #    process_ok('[% @(cctx.dataref).0.foo = 7; cctx.dataref.foo %]' => "7", {cctx => $cctx});
-#    delete $cctx->{'data'};
+    delete $cctx->{'data'};
 #    process_ok('[% $(cctx.dataref).0.foo = 7; cctx.dataref.0.foo %]'=> "7", {cctx => $cctx});
-#    delete $cctx->{'data'};
+    delete $cctx->{'data'};
 #    process_ok('[% CONFIG CALL_CONTEXT => "list"; cctx.dataref.0.foo = 7; CONFIG CALL_CONTEXT => "item"; cctx.dataref.foo %]'=> "7", {cctx => $cctx});
+}
+
+## call context with methods
+#process_ok("[% cctxo.data = 1 %] ~" => "",   {cctxo => $cctxo})   if $is_tt; # TT lets you read but not write - weird
+#process_ok("[% cctxo.bang = 1 %] ~" => " ~", {cctxo => $cctxo});
+#process_ok("[% cctxo.dataref.foo = 7; cctxo.dataref.foo %]" => "7", {cctxo => $cctxo});
+#if (! $is_tt) {
+#    process_ok('[% CALL cctxo.call_me %][% cctxo.last_context %]'    => "list",   {cctxo => $cctxo});
+#    process_ok('[% CALL @(cctxo.call_me) %][% cctxo.last_context %]' => "list",   {cctxo => $cctxo});
+#    process_ok('[% CALL $(cctxo.call_me) %][% cctxo.last_context %]' => "scalar", {cctxo => $cctxo});
+#    process_ok('[% CALL call_cctxo %][% cctxo.last_context %]'    => "list",   {cctxo => $cctxo, call_cctxo => sub { $cctxo->call_me }});
+#    process_ok('[% CALL @(call_cctxo) %][% cctxo.last_context %]' => "list",   {cctxo => $cctxo, call_cctxo => sub { $cctxo->call_me }});
+#    process_ok('[% CALL $(call_cctxo) %][% cctxo.last_context %]' => "scalar", {cctxo => $cctxo, call_cctxo => sub { $cctxo->call_me }});
+#    process_ok('[% CALL cctxo.call_me %][% cctxo.last_context %]' => "list",   {cctxo => $cctxo, tt_config => [CALL_CONTEXT => 'smart']});
+#    process_ok('[% CALL cctxo.call_me %][% cctxo.last_context.0 %]' => "list", {cctxo => $cctxo, tt_config => [CALL_CONTEXT => 'list']});
+#    process_ok('[% CALL cctxo.call_me %][% cctxo.last_context %]' => "scalar", {cctxo => $cctxo, tt_config => [CALL_CONTEXT => 'item']});
+#    process_ok('[% cctxo.array %]'    => qr{^ARRAY},  {cctxo => $cctxo});
+#    process_ok('[% @(cctxo.array) %]' => qr{^ARRAY},  {cctxo => $cctxo});
+#    process_ok('[% $(cctxo.array) %]' => '3',         {cctxo => $cctxo});
+#    process_ok('[% cctxo.array2 %]'    => '4',        {cctxo => $cctxo});
+#    process_ok('[% @(cctxo.array2) %]' => qr{^ARRAY}, {cctxo => $cctxo});
+#    process_ok('[% $(cctxo.array2) %]' => '1',        {cctxo => $cctxo});
+#    process_ok('[% cctxo.list %]'    => qr{^ARRAY},   {cctxo => $cctxo});
+#    process_ok('[% @(cctxo.list) %]' => qr{^ARRAY},   {cctxo => $cctxo});
+#    process_ok('[% $(cctxo.list) %]' => '7',          {cctxo => $cctxo});
+#    process_ok('[% cctxo.scalar %]'    => '8',        {cctxo => $cctxo});
+#    process_ok('[% @(cctxo.scalar) %]' => qr{^ARRAY}, {cctxo => $cctxo});
+#    process_ok('[% $(cctxo.scalar) %]' => '8',        {cctxo => $cctxo});
+#    process_ok('[% cctxo.bang   %] ~'    => 'bing ~', {cctxo => $cctxo});
+#
+#    $cctx->{'clear'}->();
+#    process_ok('[% SET cctxo.call_me    = 2 %][% cctxo.last_context %]' => "list2", {cctxo => $cctxo});
+#    $cctx->{'clear'}->();
+#    process_ok('[% CALL @(cctxo.call_me = 3) %][% cctxo.last_context %]' => "list3", {cctxo => $cctxo});
+#    $cctx->{'clear'}->();
+#    process_ok('[% CALL $(cctxo.call_me = 4) %][% cctxo.last_context %]' => "scalar4", {cctxo => $cctxo});
 #}
 
 ###----------------------------------------------------------------###
@@ -1520,17 +1564,47 @@ process_ok('[% foo | eval %]' => 'baz', {foo => '[% bar %]', bar => 'baz'});
 process_ok('[% "[% 1 + 2 %]" | eval %]' => '3') if ! $is_tt;
 process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
 
-#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
-#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
-#process_ok("[% '#set(\$foo = 12)'|eval(syntax => 'velocity') %]|[% foo %]" => '|12') if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval; f.eval %]' => '>>>>>caught>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+process_ok("[% '#set(\$foo = 12)'|eval(syntax => 'velocity') %]|[% foo %]" => '|12') if ! $is_tt;
 
-#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; EVALUATE f %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
-#process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; EVALUATE f; EVALUATE f %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
-#process_ok("[% EVALUATE '#set(\$foo = 12)' syntax => 'velocity' %]|[% foo %]" => '|12') if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; EVALUATE f %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; EVALUATE f; EVALUATE f %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+process_ok("[% EVALUATE '#set(\$foo = 12)' syntax => 'velocity' %]|[% foo %]" => '|12') if ! $is_tt;
 if (!$is_tt) {
-#process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error; END %]" => 'var.undef error - undefined variable: bar in input text');
-#process_ok("[% TRY; CONFIG STRICT => 1; '[% bar %]'.eval(STRICT => 0); CATCH; error; END %]" => 'eval_strict error - Cannot disable STRICT once it is enabled');
-#process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error.type; END; bing %] - ok" => 'var.undef - ok'); # restricted to sub components
+process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error; END %]" => 'var.undef error - undefined variable: bar in input text');
+process_ok("[% TRY; CONFIG STRICT => 1; '[% bar %]'.eval(STRICT => 0); CATCH; error; END %]" => 'eval_strict error - Cannot disable STRICT once it is enabled');
+process_ok("[% TRY; '[% bar %]'.eval(STRICT => 1); CATCH; error.type; END; bing %] - ok" => 'var.undef - ok'); # restricted to sub components
+}
+
+###----------------------------------------------------------------###
+print "### SYNTAX ########################################## $engine_option\n";
+
+if (! $is_tt) {
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'alloy']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'tt3']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt2']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
+
+
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
+
+process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='7 == \"7.0\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='\"a\" == \"b\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
+
+process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'hte') %] = [% 6 %]" => "6 = 6");
+process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'ht') %] = [% 6 %]" => "");
+process_ok("[% \"<TMPL_VAR NAME='foo'>\"|eval(syntax => 'ht') %] = [% 12 %]" => "12 = 12", {foo => 12});
+
 }
 
 ###----------------------------------------------------------------###
@@ -1562,35 +1636,6 @@ local $ENV{'REQUEST_METHOD'} = 0;
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => undef };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => undef };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 0}]});
-}
-
-###----------------------------------------------------------------###
-print "### SYNTAX ########################################## $engine_option\n";
-
-if (! $is_tt) {
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'alloy']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'tt3']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt2']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
-
-
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
-
-process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
-process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR EXPR='7 == \"7.0\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR EXPR='\"a\" == \"b\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
-
-process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'hte') %] = [% 6 %]" => "6 = 6");
-process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval(syntax => 'ht') %] = [% 6 %]" => "");
-process_ok("[% \"<TMPL_VAR NAME='foo'>\"|eval(syntax => 'ht') %] = [% 12 %]" => "12 = 12", {foo => 12});
-
 }
 
 ###----------------------------------------------------------------###
@@ -1632,4 +1677,4 @@ process_ok('[% CONFIG AUTO_FILTER => "html"; foo %]', => '&amp;', {foo => '&'}) 
 
 ###----------------------------------------------------------------###
 print "### DONE ############################################ $engine_option\n";
-} # end of for
+
