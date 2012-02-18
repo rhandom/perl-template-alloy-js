@@ -177,8 +177,8 @@ process_ok("([% SET file = 'bar' %][% INSERT \"\${file}.tt\" %])" => '([% blue %
 print "### INCLUDE ######################################### $engine_option\n";
 
 process_ok("([% INCLUDE bar.tt %])" => '(BAR)');
-process_ok("([% JS %] process('bar.tt', {}, 'localize') [% END %])" => '(BAR)') if $compile_js;
-process_ok("([% JS %] write(process('bar.tt', {}, 'localize', 'returnresult')) [% END %])" => '(BAR)') if $compile_js;
+process_ok("([% JS %] process('bar.tt', {}, 'localize') [% END %])" => '(BAR)', {tt_config => [EVAL_JS => 1]}) if $compile_js;
+process_ok("([% JS %] write(process('bar.tt', {}, 'localize', 'returnresult')) [% END %])" => '(BAR)', {tt_config => [EVAL_JS => 1]}) if $compile_js;
 process_ok("[% INCLUDE foo.tt %]" => '(BAR)');
 process_ok("[% INCLUDE meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
 process_ok("[% META foo = 'string'; INCLUDE meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
@@ -192,7 +192,7 @@ process_ok("([% SET file = 'bar' %][% INCLUDE \"\${file}.tt\" %])" => '(BAR)');
 process_ok("([% INCLUDE baz.tt %])" => '(42)');
 process_ok("([% INCLUDE baz.tt %])[% baz %]" => '(42)');
 process_ok("[% SET baz = 21 %]([% INCLUDE baz.tt %])[% baz %]" => '(42)21');
-process_ok("[% SET baz = 21 %]([% JS %] process('baz.tt',null,'localize') [% END %])[% baz %]" => '(42)21') if $compile_js;
+process_ok("[% SET baz = 21 %]([% JS %] process('baz.tt',null,'localize') [% END %])[% baz %]" => '(42)21', {tt_config => [EVAL_JS => 1]}) if $compile_js;
 
 process_ok("([% META blam = 5; INCLUDE blocks.tt %])" => '()');
 process_ok("([% META blam = 5; INCLUDE blocks.tt %])([% PROCESS foo text => 'bar' %])" => ($use_stream ? '()(' : ''));
@@ -206,8 +206,8 @@ print "### PROCESS ######################################### $engine_option\n";
 
 process_ok("([% PROCESS bar.tt %])" => '(BAR)');
 process_ok("[% PROCESS foo.tt %]" => '(BAR)');
-process_ok("([% JS %] process('bar.tt') [% END %])" => '(BAR)') if $compile_js;
-process_ok("([% JS %] write(process('bar.tt', {}, false, 'returnresult')) [% END %])" => '(BAR)') if $compile_js;
+process_ok("([% JS %] process('bar.tt') [% END %])" => '(BAR)', {tt_config => [EVAL_JS => 1]}) if $compile_js;
+process_ok("([% JS %] write(process('bar.tt', {}, false, 'returnresult')) [% END %])" => '(BAR)', {tt_config => [EVAL_JS => 1]}) if $compile_js;
 process_ok("[% PROCESS meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
 process_ok("[% META foo = 'string'; PROCESS meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
 process_ok("[% PROCESS meta.tt %][% template.bar %]" => 'Metafoo() Metabar(meta.tt)');
@@ -220,7 +220,7 @@ process_ok("([% SET file = 'bar' %][% PROCESS \"\${file}.tt\" %])" => '(BAR)');
 process_ok("([% PROCESS baz.tt %])" => '(42)');
 process_ok("([% PROCESS baz.tt %])[% baz %]" => '(42)42');
 process_ok("[% SET baz = 21 %]([% PROCESS baz.tt %])[% baz %]" => '(42)42');
-process_ok("[% SET baz = 21 %]([% JS %] process('baz.tt') [% END %])[% baz %]" => '(42)42') if $compile_js;
+process_ok("[% SET baz = 21 %]([% JS %] process('baz.tt') [% END %])[% baz %]" => '(42)42', {tt_config => [EVAL_JS => 1]}) if $compile_js;
 
 process_ok("[% PROCESS nested/foo.tt %]" => '(Nested foo BAR)');
 process_ok("[% PROCESS nested/foo.tt %]" => '(Nested foo Nested bar)', {tt_config => [ADD_LOCAL_PATH => 1]}) if ! $is_tt;
