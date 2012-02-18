@@ -18,7 +18,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => (! $is_tt ? 1000 : 624) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
+use Test::More tests => (! $is_tt ? 1007 : 631) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
 use constant test_taint => 0 && eval { require Taint::Runtime };
 use Data::Dumper;
 
@@ -1342,8 +1342,8 @@ if (! $is_tt) {
 print "### INTERPOLATE ##################################### $engine_option\n";
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
-#process_ok("[% PERL %] my \$n=7; print \$n [% END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
-#process_ok("[% TRY ; PERL %] my \$n=7; print \$n [% END ; END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
+process_ok("[% PERL %] my \$n=7; print \$n [% END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
+process_ok("[% TRY ; PERL %] my \$n=7; print \$n [% END ; END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
 
 my $slash = '\\';
 my $interp_i = 0;
@@ -1432,11 +1432,11 @@ process_ok('[% a = 7 %]$a' => 7, {tt_config => ['interpolate' => 1]}) if ! $is_t
 ###----------------------------------------------------------------###
 print "### PERL ############################################ $engine_option\n";
 
-#process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
-#process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
-#process_ok("[% PERL %] print \$stash->get('one') [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
-#process_ok("[% PERL %] print \$stash->set('a.b.c', 7) [% END %][% a.b.c %]" => '77', {tt_config => ['EVAL_PERL' => 1]});
-#process_ok("[% RAWPERL %]\$output .= 'interesting'[% END %]" => 'interesting', {tt_config => ['EVAL_PERL' => 1]});
+process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
+process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
+process_ok("[% PERL %] print \$stash->get('one') [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
+process_ok("[% PERL %] print \$stash->set('a.b.c', 7) [% END %][% a.b.c %]" => '77', {tt_config => ['EVAL_PERL' => 1]});
+process_ok("[% RAWPERL %]\$output .= 'interesting'[% END %]" => 'interesting', {tt_config => ['EVAL_PERL' => 1]});
 
 ###----------------------------------------------------------------###
 print "### recursion prevention ############################ $engine_option\n";
