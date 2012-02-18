@@ -245,7 +245,7 @@ sub load_js {
             MAX_EVAL_RECURSE  => $self->{'MAX_EVAL_RECURSE'}  || $Template::Alloy::MAX_EVAL_RECURSE,
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
             (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS FILTERS)),
-            (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES STRICT TRIM UNDEFINED_GET)),
+            (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES RECURSION STRICT TRIM UNDEFINED_GET)),
         });
         my $out = $callback->([$$out_ref]);
         if (ref($out) eq 'ARRAY') {
@@ -343,6 +343,22 @@ sub _native_dynamic_filter {
     }
 }
 
+sub _native_PERL {
+    my ($self, $node, $raw) = @_;
+    require Template::Alloy::Play;
+    local $self->{'_vars'} = $js_context->eval('$_vars');
+    my $out = '';
+    my $ok = eval { $Template::Alloy::Play::DIRECTIVES->{$raw ? 'RAWPERL' : 'PERL'}->($self, $node->[3], $node, \$out); 1 };
+    my $err = $@;
+    $js_context->bind('$_vars', $self->{'_vars'});
+    die $err if ! $ok;
+    return $out;
+}
+
+sub _native_RAWPERL {
+    my ($self, $node) = @_;
+    return _native_PERL($self, $node, 1);
+}
 
 ###----------------------------------------------------------------###
 
@@ -951,40 +967,7 @@ sub compile_js_NEXT {
 
 sub compile_js_PERL{
     my ($self, $node, $str_ref, $indent) = @_;
-
-    ### fill in any variables
-    my $perl = $node->[4] || return;
-    my $code = $self->compile_tree($perl, "$indent$INDENT");
-
-    $$str_ref .= "
-${indent}\$self->throw('perl', 'EVAL_PERL not set') if ! \$self->{'EVAL_PERL'};
-${indent}require Template::Alloy::Play;
-${indent}\$var = do {
-${indent}${INDENT}my \$out = '';
-${indent}${INDENT}my \$out_ref = \\\$out;$code
-${indent}${INDENT}\$out;
-${indent}};
-${indent}#\$var = \$1 if \$var =~ /^(.+)\$/s; # blatant untaint
-
-${indent}my \$err;
-${indent}eval {
-${indent}${INDENT}package Template::Alloy::Perl;
-${indent}${INDENT}my \$context = \$self->context;
-${indent}${INDENT}my \$stash   = \$context->stash;
-${indent}${INDENT}local *PERLOUT;
-${indent}${INDENT}tie *PERLOUT, 'Template::Alloy::EvalPerlHandle', \$out_ref;
-${indent}${INDENT}my \$old_fh = select PERLOUT;
-${indent}${INDENT}eval \$var;
-${indent}${INDENT}\$err = \$\@;
-${indent}${INDENT}select \$old_fh;
-${indent}};
-${indent}\$err ||= \$\@;
-${indent}if (\$err) {
-${indent}${INDENT}\$self->throw('undef', \$err) if ! UNIVERSAL::can(\$err, 'type');
-${indent}${INDENT}die \$err;
-${indent}}";
-
-    return;
+    _compile_defer_to_play($self, $node, $str_ref, $indent);
 }
 
 
