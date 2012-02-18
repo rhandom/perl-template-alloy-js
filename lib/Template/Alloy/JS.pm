@@ -832,9 +832,9 @@ sub compile_js_JS {
 
     if ($self->{'EVAL_JS'} =~ /^[Rr][Aa][Ww]$/) {
         push @{ $self->{'_userfunc'} }, '' if ! @{ $self->{'_userfunc'} };
-        $$str_ref .= "\n${indent}(function (write, process, get, set, alloy, out_ref, userfunc, uf_get, uf_set, uf_process) {
+        $$str_ref .= "\n${indent}(function (write, process, get, set, alloy, vars, out_ref, userfunc, uf_get, uf_set, uf_process) {
 ${indent}$node->[4]->[0]
-${indent}})(function(s){out_ref[0]+=s}, uf_process, uf_get, uf_set, alloy, out_ref)";
+${indent}})(function(s){out_ref[0]+=s}, uf_process, uf_get, uf_set, alloy, alloy.vars(), out_ref)";
     } else {
         my ($note, $line, $col) = _node_info($self, $node, '');
         my $i = @{ $self->{'_userfunc'} };
