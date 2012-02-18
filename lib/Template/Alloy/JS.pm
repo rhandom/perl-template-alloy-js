@@ -330,6 +330,12 @@ sub _native_config {
     return 1;
 }
 
+sub _native_list_filters {
+    my $self = shift;
+    my $fil = $self->list_filters;
+    return {map {$_ => $fil->{$_};} grep {!$Template::Alloy::ITEM_OPS->{$_} && !$Template::Alloy::ITEM_METHODS->{$_}} keys %$fil};
+}
+
 sub _native_dynamic_filter {
     my ($self, $name, $sub, $args) = @_;
     ($sub, my $err) = $sub->($self->context, @$args);
