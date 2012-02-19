@@ -1225,7 +1225,7 @@ ${indent}ref = alloy.call_native('USE', ".$json->encode($module).", ref);
 ${indent}alloy.set(".$json->encode(\@var).", ref);";
 }
 
-sub compile_js_VIEW { shift->throw('compile_js', 'The VIEW directive is not supported in compile_js') }
+sub compile_js_VIEW { shift->throw('compile_js', 'The VIEW directive is not supported in COMPILE_JS') }
 
 sub compile_js_WHILE {
     my ($self, $node, $str_ref, $indent) = @_;
@@ -1247,25 +1247,15 @@ ${indent}}";
 sub compile_js_WRAPPER {
     my ($self, $node, $str_ref, $indent) = @_;
 
-    my ($named, @files) = @{ $node->[3] };
-    $named = $json->encode($named);
-
+    my ($args, @files) = @{ $node->[3] };
     $$str_ref .= "
-${indent}\$var = do {
-${indent}${INDENT}my \$out = '';
-${indent}${INDENT}my \$out_ref = \\\$out;"
-.$self->compile_tree($node->[4], "$indent$INDENT")."
-${indent}${INDENT}\$out;
-${indent}};
-${indent}for my \$file (reverse("
-.join(",${indent}${INDENT}", map {"\$self->play_expr(".$json->encode($_).")"} @files).")) {
-${indent}${INDENT}local \$self->{'_vars'}->{'content'} = \$var;
-${indent}${INDENT}\$var = '';
-${indent}${INDENT}require Template::Alloy::Play;
-${indent}\$Template::Alloy::Play::DIRECTIVES->{'INCLUDE'}->(\$self, [$named, \$file], ['$node->[0]', $node->[1], $node->[2]], \\\$var);
-${indent}}
-${indent}\$\$out_ref .= \$var if defined \$var;";
-
+${indent}ref = (function () {
+${indent}${INDENT}var out_ref = [''];"
+.$self->compile_tree_js($node->[4], "${indent}${INDENT}")."
+${indent}${INDENT}return out_ref[0];
+${indent}})();
+${indent}alloy.set('content', ref);
+${indent}alloy.process_d_i([".join(',',map{_compile_expr_js($self,$_)} @files)."],[".join(',',map{_encode($self,$_)} @{$args->[0]}[2..$#{$args->[0]}])."],'$node->[0]', out_ref);\n";
     return;
 }
 
