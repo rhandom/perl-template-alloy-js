@@ -8,7 +8,7 @@ Template::Alloy::JS - Compile JS role - allows for compiling the AST to javascri
 
 use strict;
 use warnings;
-use Template::Alloy;
+use Template::Alloy 1.017;
 our @ISA = qw(Template::Alloy); # for objects blessed as Template::Alloy::JS
 
 eval { require JSON } || die "Cannot load JSON library used by Template::Alloy::JS: $@";
@@ -364,6 +364,12 @@ sub _native_PERL {
 sub _native_RAWPERL {
     my ($self, $node) = @_;
     return _native_PERL($self, $node, 1);
+}
+
+sub _native_USE {
+    my ($self, $module, $args) = @_;
+    require Template::Alloy::Play;
+    return $Template::Alloy::Play::DIRECTIVES->{'USE'}->($self, [undef, $module, [[[undef, '{}'],0]]], undef, undef, $args || {});
 }
 
 ###----------------------------------------------------------------###
@@ -1199,7 +1205,24 @@ sub compile_js_UNLESS { $DIRECTIVES->{'IF'}->(@_) }
 
 sub compile_js_USE {
     my ($self, $node, $str_ref, $indent) = @_;
-    _compile_defer_to_play($self, $node, $str_ref, $indent);
+    my ($var, $module, $args) = @{ $node->[3] };
+    $var = $module if ! defined $var;
+    my @var = map {($_, 0, '.')} split /(?:\.|::)/, $var;
+    pop @var; # remove the trailing '.'
+
+    my ($named, @args) = @$args;
+    push @args, $named if @{ $named->[0] } > 2;
+
+    if (lc($module) eq 'iterator') {
+        $$str_ref .= "\n${indent}alloy.set(".$json->encode(\@var).", new alloy.iterator("._compile_expr_js($self, $args[0])."));";
+        return;
+    }
+
+    $$str_ref .= "
+${indent}ref = [".join(', ', map {_compile_expr_js($self, $_)} @args)."];
+${indent}for (var i = 0; i < ref.length; i++) if (typeof ref[i] === 'function') ref[i] = ref[i]();
+${indent}ref = alloy.call_native('USE', ".$json->encode($module).", ref);
+${indent}alloy.set(".$json->encode(\@var).", ref);";
 }
 
 sub compile_js_VIEW { shift->throw('compile_js', 'The VIEW directive is not supported in compile_js') }
