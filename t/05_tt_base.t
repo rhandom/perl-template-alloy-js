@@ -7,7 +7,7 @@
 =cut
 
 use 5.006;
-use vars qw($module $is_tt $compile_js $five_six $use_stream);
+use vars qw($module $is_tt $compile_js $five_six $use_stream $has_tt_filter);
 BEGIN {
     $module = 'Template::Alloy';
     if ($ENV{'USE_TT'} || grep {/tt/i} @ARGV) {
@@ -15,10 +15,11 @@ BEGIN {
     }
     $is_tt = $module eq 'Template';
     $five_six = ($^V < 5.007) ? 1 : 0;
+    $has_tt_filter = !eval { require Template::Filters } ? 0 : 1;
 };
 
 use strict;
-use Test::More tests => (! $is_tt ? 1007 : 631) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2)));
+use Test::More tests => (! $is_tt ? 1007 : 631) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2))) + $has_tt_filter;
 use constant test_taint => 0 && eval { require Taint::Runtime };
 use Data::Dumper;
 
@@ -408,6 +409,7 @@ process_ok("[% n|format('(%s)') %]" => "(a)\n(b)", {n => "a\nb"}); # TT2 filter
 process_ok("[% n.hash.items.1 %]" => "b", {n => {a => "b"}});
 process_ok("[% n.hex %]" => "255", {n => "FF"}) if ! $is_tt;
 process_ok("[% n|html %]" => "&amp;&lt;&gt;&quot;'", {n => '&<>"\''}); # TT2 filter
+process_ok("[% n|html_entity %]" => "&amp;", {n => '&'}) if $has_tt_filter; # TT2 native filter
 process_ok("[% n|xml %]"  => "&amp;&lt;&gt;&quot;&apos;", {n => '&<>"\''}); # TT2 filter
 process_ok("[% n|indent %]" => "    a\n    b", {n => "a\nb"}); # TT2 filter
 process_ok("[% n|indent(2) %]" => "  a\n  b", {n => "a\nb"}); # TT2 filter
@@ -1171,19 +1173,21 @@ print "### USE ############################################# $engine_option\n";
 
 my @config_p = (PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1);
 process_ok("[% USE son_of_gun_that_does_not_exist %]one" => '', {tt_config => \@config_p});
-#process_ok("[% USE FooTest %]one" => 'one', {tt_config => \@config_p});
-#process_ok("[% USE FooTest2 %]one" => 'one', {tt_config => \@config_p});
+process_ok("[% USE Iterator([3..6]) %]hey[% CALL Iterator.get_first(); Iterator.size %]" => "hey4");
+process_ok("[% USE FooTest %]one" => 'one', {tt_config => \@config_p});
+process_ok("[% USE FooTest2 %]one" => 'one', {tt_config => \@config_p});
 #process_ok("[% USE FooTest(bar = 'baz') %]one[% FooTest.bar %]" => 'onebarbaz', {tt_config => \@config_p});
 #process_ok("[% USE FooTest2(bar = 'baz') %]one[% FooTest2.bar %]" => 'onebarbaz', {tt_config => \@config_p});
 #process_ok("[% USE FooTest(bar = 'baz') %]one[% FooTest.bar %]" => 'onebarbaz', {tt_config => \@config_p});
 #process_ok("[% USE d = FooTest(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz', {tt_config => \@config_p});
 #process_ok("[% USE d.d = FooTest(bar = 'baz') %]one[% d.d.bar %]" => '', {tt_config => \@config_p});
-#
+process_ok("[% USE FooTest(somerand = 8) %]one[% FooTest.somerand %]" => 'one8', {tt_config => \@config_p});
+
 #process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => '',     {tt_config => [@config_p, PLUGINS => {a=>'FooTest'}, ]});
 #process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => 'one7', {tt_config => [@config_p, PLUGINS => {a=>'FooTest2'},]});
-#
-#@config_p = (PLUGIN_BASE => ['NonExistant', 'MyTestPlugin'], LOAD_PERL => 1);
-#process_ok("[% USE FooTest %]three" => 'three', {tt_config => \@config_p});
+
+@config_p = (PLUGIN_BASE => ['NonExistant', 'MyTestPlugin'], LOAD_PERL => 1);
+process_ok("[% USE FooTest %]three" => 'three', {tt_config => \@config_p});
 
 ###----------------------------------------------------------------###
 print "### MACRO ########################################### $engine_option\n";
