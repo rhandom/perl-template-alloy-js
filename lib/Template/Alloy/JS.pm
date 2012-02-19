@@ -884,13 +884,17 @@ ${indent}${INDENT}var err${i}; try {
 ${indent}${INDENT}var lcv${i} = alloy.config('LOOP_CONTEXT_VARS') && ! alloy.config('QR_PRIVATE');
 ${indent}${INDENT}for (var i${i} = 0, I${i} = items${i}.length-1; i${i} <= I${i}; i${i}++) {
 ${indent}${INDENT}${INDENT}ref = items${i}[i${i}];
-${indent}${INDENT}${INDENT}if (typeof ref != 'object') throw 'loop - Scalar value used in LOOP';
-${indent}${INDENT}${INDENT}if (! global${i}) alloy.vars(ref);
-${indent}${INDENT}${INDENT}else for (var i in ref) alloy.set(i, ref[i]);
+${indent}${INDENT}${INDENT}if (ref && typeof ref !== 'object') alloy.throw('loop', 'Scalar value used in LOOP');
+${indent}${INDENT}${INDENT}if (! global${i}) alloy.vars(ref || {});
+${indent}${INDENT}${INDENT}else {
+${indent}${INDENT}${INDENT}${INDENT}if (i${i} !== 0) alloy.restoreScope();
+${indent}${INDENT}${INDENT}${INDENT}alloy.saveScope();
+${indent}${INDENT}${INDENT}${INDENT}for (var i in ref) alloy.set(i, ref[i]);
+${indent}${INDENT}${INDENT}}
 ${indent}${INDENT}${INDENT}if (lcv${i}) {
 ${indent}${INDENT}${INDENT}${INDENT}alloy.set('__counter__', i${i}+1);
-${indent}${INDENT}${INDENT}${INDENT}alloy.set('__first__', i${i}==0?1:0);
-${indent}${INDENT}${INDENT}${INDENT}alloy.set('__last__', i${i}==I${i}?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__first__', i${i}===0?1:0);
+${indent}${INDENT}${INDENT}${INDENT}alloy.set('__last__', i${i}===I${i}?1:0);
 ${indent}${INDENT}${INDENT}${INDENT}alloy.set('__inner__', i${i}>0&&i${i}<I${i}?1:0);
 ${indent}${INDENT}${INDENT}${INDENT}alloy.set('__odd__', (i${i}%2)?0:1);
 ${indent}${INDENT}${INDENT}}"
@@ -899,7 +903,8 @@ ${indent}${INDENT}${INDENT}}"
 ${indent}${INDENT}}
 ${indent}${INDENT}} catch (e) { err${i} = e }
 ${indent}${INDENT}if (!global${i}) alloy.vars(oldvars${i});
-${indent}${INDENT}if (err${i} != null) throw err;
+${indent}${INDENT}else alloy.restoreScope();
+${indent}${INDENT}if (err${i} != null) throw err${i};
 ${indent}}";
 }
 
