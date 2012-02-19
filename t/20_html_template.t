@@ -6,9 +6,9 @@
 
 =cut
 
-use vars qw($module $is_ht $is_hte $is_ta $compile_perl);
+use vars qw($module $is_ht $is_hte $is_ta);
 BEGIN {
-    $module = 'Template::Alloy';
+    $module = 'Template::Alloy::JS';
     if (grep {/hte/i} @ARGV) {
         $module = 'HTML::Template::Expr';
     } elsif (grep {/ht/i} @ARGV) {
@@ -19,7 +19,7 @@ BEGIN {
     $is_ta = $module eq 'Template::Alloy::JS';
 };
 use strict;
-use Test::More tests => ($is_ta) ? 250 : ($is_ht) ? 75 : 82;
+use Test::More tests => ($is_ta) ? 126 : ($is_ht) ? 75 : 82;
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
 use_ok($module);
@@ -38,7 +38,6 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
-    push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
 
@@ -85,11 +84,8 @@ open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
 print $fh "(<TMPL_VAR bar>)";
 close $fh;
 
-for $compile_perl ((! $is_ta) ? (0) : (0, 1)) {
-    my $is_compile_perl = "compile perl ($compile_perl)";
-
 ###----------------------------------------------------------------###
-print "### VAR ############################################# $is_compile_perl\n";
+print "### VAR #############################################\n";
 
 process_ok("Foo" => "Foo");
 
@@ -137,7 +133,7 @@ process_ok("<!--TMPL_VAR NAME='foo'-->" => "FOO", {foo => "FOO"});
 process_ok("<TMPL_VAR NAME=foo>" => '&amp;', {foo => '&', tt_config => [AUTO_FILTER => 'html']}) if $is_ta;
 
 ###----------------------------------------------------------------###
-print "### IF / ELSE / UNLESS ############################## $is_compile_perl\n";
+print "### IF / ELSE / UNLESS ##############################\n";
 
 process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "", {foo => ""});
 process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "bar", {foo => "1"});
@@ -163,7 +159,7 @@ process_ok("<TMPL_IF ESCAPE=HTML foo>bar</TMPL_IF>baz" => "", {foo => "1"});
 process_ok("<TMPL_IF DEFAULT=bar foo>bar</TMPL_IF>baz" => "", {foo => "1"});
 
 ###----------------------------------------------------------------###
-print "### INCLUDE ######################################### $is_compile_perl\n";
+print "### INCLUDE #########################################\n";
 
 process_ok("<TMPL_INCLUDE blah>bar" => "");
 process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
@@ -185,7 +181,7 @@ process_ok("<TMPL_INCLUDE bar.ht>" => "()");
 process_ok("<TMPL_INCLUDE bar.ht>" => "(hi)", {bar => 'hi'});
 
 ###----------------------------------------------------------------###
-print "### EXPR ############################################ $is_compile_perl\n";
+print "### EXPR ############################################\n";
 
 process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
 process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
@@ -202,7 +198,7 @@ process_ok("<TMPL_VAR EXPR=foo>" => '&amp;', {foo => '&', tt_config => [AUTO_FIL
 process_ok("<TMPL_VAR EXPR=foo|none>" => '&', {foo => '&', tt_config => [AUTO_FILTER => 'html']}) if $is_ta;
 
 ###----------------------------------------------------------------###
-print "### LOOP ############################################ $is_compile_perl\n";
+print "### LOOP ############################################\n";
 
 process_ok("<TMPL_LOOP blah></TMPL_LOOP>foo" => "foo");
 process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "foo", {blah => 1}) if $is_ta;
@@ -236,7 +232,7 @@ process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VA
 
 
 ###----------------------------------------------------------------###
-print "### TT3 DIRECTIVES ################################## $is_compile_perl\n";
+print "### TT3 DIRECTIVES ##################################\n";
 
 process_ok("<TMPL_GET foo>" => "FOO", {foo => "FOO"})    if $is_ta;
 process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [NO_TT => 1]}) if $is_ta;
@@ -260,14 +256,14 @@ process_ok("<TMPL_GET foo>" => '&amp;', {foo => '&', tt_config => [AUTO_FILTER =
 process_ok("<TMPL_GET foo|none>" => '&', {foo => '&', tt_config => [AUTO_FILTER => 'html']}) if $is_ta;
 
 ###----------------------------------------------------------------###
-print "### TT3 CHOMPING #################################### $is_compile_perl\n";
+print "### TT3 CHOMPING ####################################\n";
 
 process_ok("\n<TMPL_GET foo>" => "\nFOO", {foo => "FOO"}) if $is_ta;
 process_ok("<TMPL_GET foo->\n" => "FOO", {foo => "FOO"})  if $is_ta;
 process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_ta;
 
 ###----------------------------------------------------------------###
-print "### TT3 INTERPOLATE ################################# $is_compile_perl\n";
+print "### TT3 INTERPOLATE #################################\n";
 
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"}) if $is_ta;
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO", tt_config => [INTERPOLATE => 1]}) if $is_ta;
@@ -281,5 +277,5 @@ process_ok('Foo $a Bar $!a Baz'     => "Foo \$a Bar  Baz",   {tt_config => ['INT
 process_ok('Foo ${a} Bar $!{a} Baz' => "Foo \${a} Bar  Baz", {tt_config => ['INTERPOLATE' => 1, SHOW_UNDEFINED_INTERP => 1]}) if $is_ta;
 
 ###----------------------------------------------------------------###
-print "### DONE ############################################ $is_compile_perl\n";
-} # end of for
+print "### DONE ############################################\n";
+
