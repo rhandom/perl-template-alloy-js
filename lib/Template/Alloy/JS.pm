@@ -338,7 +338,8 @@ sub _native_list_filters {
 
 sub _native_dynamic_filter {
     my ($self, $name, $sub, $args) = @_;
-    ($sub, my $err) = $sub->($self->context, @$args);
+    #($sub, my $err) = $sub->($self->context, @$args);
+    ($sub, my $err) = $sub->(undef, @$args); # for now this will squash warnings until sv2v8 supports blessed objects - though it will break certain filters
     return $sub if UNIVERSAL::isa($sub, 'CODE');
     if (! $sub && $err) {
         $self->throw('filter', $err) if ! UNIVERSAL::can($err, 'type');
