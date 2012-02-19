@@ -19,7 +19,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => (! $is_tt ? 1007 : 631) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2))) + $has_tt_filter;
+use Test::More tests => (! $is_tt ? 1012 : 636) - (! $five_six ? 0 : (3 * ($is_tt ? 1 : 2))) + $has_tt_filter;
 use constant test_taint => 0 && eval { require Taint::Runtime };
 use Data::Dumper;
 
