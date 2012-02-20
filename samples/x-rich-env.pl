@@ -41,11 +41,11 @@ GetOptions(
 );
 
 die <<'HELP' if $help;
-perl -Mblib benchmark/x-rich-env.pl [--size N] [--template NAME]
+perl -Mblib x-rich-env.pl [--size N] [--template NAME]
 
 This is a general benchmark utility for rich environment,
 assuming persisitent PSGI applications using XS modules.
-See also benchmark/x-poor-env.pl.
+See also x-poor-env.pl.
 HELP
 
 $tmpl = 'include' if not defined $tmpl;
