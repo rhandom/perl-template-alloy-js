@@ -177,7 +177,7 @@ sub load_js {
                 $file = ($self->include_paths->[0] || '.') .'/'. $file;
             }
             $file .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
-            $file .= $Template::Alloy::JS_COMPILE_EXT if defined $JS::Alloy::JS_COMPILE_EXT;
+            $file .= $Template::Alloy::JS_COMPILE_EXT if defined $Template::Alloy::JS_COMPILE_EXT;
 
             if (-e $file && ($doc->{'_is_str_ref'} || (stat $file)[9] == $doc->{'modtime'})) {
                 $js = $self->slurp($file);
@@ -245,7 +245,7 @@ sub load_js {
             WHILE_MAX         => $Template::Alloy::WHILE_MAX,
             MAX_EVAL_RECURSE  => $self->{'MAX_EVAL_RECURSE'}  || $Template::Alloy::MAX_EVAL_RECURSE,
             MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
-            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS FILTERS)),
+            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS FILTERS CACHE_STR_REFS)),
             (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES RECURSION STRICT TRIM UNDEFINED_GET)),
         });
         my $out = $callback->([$$out_ref]);
