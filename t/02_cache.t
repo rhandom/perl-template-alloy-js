@@ -13,7 +13,7 @@ BEGIN {
         $has_encode = 1;
     }
 
-    $n_tests = 192;
+    $n_tests = 108;
     $n_tests += 12 if $has_encode;
 };
 
@@ -153,126 +153,6 @@ ok(! $Template::Alloy::GLOBAL_CACHE->{$name}, "Not in GLOBAL_CACHE");
 
 
 ###----------------------------------------------------------------###
-print "### COMPILE_JS => 0 ################################################\n";
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue'});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir,  "$name$Template::Alloy::JS_COMPILE_EXT",  0],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok(! $Template::Alloy::GLOBAL_CACHE->{$name}, "Not in GLOBAL_CACHE");
-
-###----------------------------------------------------------------###
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [GLOBAL_CACHE => 1]});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir,  "$name$Template::Alloy::JS_COMPILE_EXT",  0],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok($Template::Alloy::GLOBAL_CACHE->{$name}, "Is in GLOBAL_CACHE");
-
-###----------------------------------------------------------------###
-
-pristine();
-
-my $cache = {};
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [GLOBAL_CACHE => $cache]});
-ok($cache->{$name}, "Is in CACHE");
-
-###----------------------------------------------------------------###
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_EXT => '.ttc']});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-
-###----------------------------------------------------------------###
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_DIR => $test_dir2]});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir,  "$name$Template::Alloy::JS_COMPILE_EXT",  0],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-
-###----------------------------------------------------------------###
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_DIR => $test_dir2, COMPILE_EXT => '.ttc']});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok(! $Template::Alloy::GLOBAL_CACHE->{$name}, "Is in GLOBAL_CACHE");
-
-###----------------------------------------------------------------###
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_DIR => $test_dir2, COMPILE_EXT => '.ttc', GLOBAL_CACHE => 1]});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok($Template::Alloy::GLOBAL_CACHE->{$name}, "Is in GLOBAL_CACHE");
-ok(! $Template::Alloy::GLOBAL_CACHE->{$name}->{'_perl'}, "Doesn't Have perl");
-
-###----------------------------------------------------------------###
-
-if ($has_encode) {
-    my $encoding = 'UTF-8';
-    my $template = "[% blue %]BAR ¥";
-
-    pristine($template, $encoding);
-
-    my $in  = 'fü';
-    my $out = 'füBAR ¥';
-
-    process_ok($name => $out, {blue => $in, tt_config => [ENCODING => $encoding, COMPILE_EXT => '.ttc']});
-
-    test_cache([$test_dir,  $name, 1],
-               [$test_dir2, $name, 0],
-               [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-               [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-               );
-
-    process_ok($name => $out, {blue => $in, tt_config => [ENCODING => $encoding, COMPILE_EXT => '.ttc']});
-}
-
-###----------------------------------------------------------------###
 print "### COMPILE_JS => 1 ################################################\n";
 
 pristine();
@@ -313,10 +193,10 @@ test_cache([$test_dir,  $name, 1],
            [$test_dir2, $name, 0],
            [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
            [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir,  "$name$Template::Alloy::JS_COMPILE_EXT",  1],
-           [$test_dir2, "$test_dir/$name$Template::Alloy::JS_COMPILE_EXT",  0],
+           [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  1],
+           [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
            );
-exit;
+
 ###----------------------------------------------------------------###
 
 pristine();
@@ -360,7 +240,7 @@ test_cache([$test_dir,  $name, 1],
            [$test_dir2, "$test_dir/$name.ttc$Template::Alloy::JS_COMPILE_EXT",  1],
            );
 ok($Template::Alloy::GLOBAL_CACHE->{$name}, "Is in GLOBAL_CACHE");
-ok($Template::Alloy::GLOBAL_CACHE->{$name}->{'_perl'}, "Has perl");
+ok($Template::Alloy::GLOBAL_CACHE->{$name}->{'_js'}, "Has js");
 
 ###----------------------------------------------------------------###
 
@@ -383,31 +263,6 @@ if ($has_encode) {
 
     process_ok($name => $out, {blue => $in, tt_config => [ENCODING => $encoding, COMPILE_JS => 1, COMPILE_EXT => '.ttc']});
 }
-
-###----------------------------------------------------------------###
-print "### COMPILE_JS => 2 ################################################\n";
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_JS => 2, COMPILE_EXT => '.ttc', GLOBAL_CACHE => 1]});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok($Template::Alloy::GLOBAL_CACHE->{$name}, "Is in GLOBAL_CACHE");
-ok(! $Template::Alloy::GLOBAL_CACHE->{$name}->{'_perl'}, "Doesn't Have perl");
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_JS => 2, COMPILE_EXT => '.ttc', GLOBAL_CACHE => 1]});
-
-test_cache([$test_dir,  $name, 1],
-           [$test_dir2, $name, 0],
-           [$test_dir,  "$name.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir,  "$name.ttc$Template::Alloy::JS_COMPILE_EXT",  1],
-           );
-ok($Template::Alloy::GLOBAL_CACHE->{$name}, "Is in GLOBAL_CACHE");
-ok($Template::Alloy::GLOBAL_CACHE->{$name}->{'_perl'}, "Has perl");
 
 ###----------------------------------------------------------------###
 print "### STRING_REF #######################################################\n";
@@ -438,7 +293,6 @@ test_cache([$test_dir,  $file, 0],
            [$test_dir,  "$file$Template::Alloy::JS_COMPILE_EXT",  0],
            );
 ok($Template::Alloy::GLOBAL_CACHE->{$file}, "Is in GLOBAL_CACHE");
-ok(! $Template::Alloy::GLOBAL_CACHE->{$file}->{'_perl'}, "Doesn't Have perl");
 
 ###----------------------------------------------------------------###
 
@@ -491,31 +345,7 @@ test_cache([$test_dir,  $file, 0],
            [$test_dir,  "$file$Template::Alloy::JS_COMPILE_EXT",  0],
            );
 ok($Template::Alloy::GLOBAL_CACHE->{$file}, "Is in GLOBAL_CACHE");
-ok($Template::Alloy::GLOBAL_CACHE->{$file}->{'_perl'}, "Has perl");
-
-###----------------------------------------------------------------###
-
-pristine();
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [GLOBAL_CACHE => 1, COMPILE_JS => 2]});
-
-test_cache([$test_dir,  $file, 0],
-           [$test_dir2, $file, 0],
-           [$test_dir,  "$file$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir,  "$file$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok($Template::Alloy::GLOBAL_CACHE->{$file}, "Is in GLOBAL_CACHE");
-ok(! $Template::Alloy::GLOBAL_CACHE->{$file}->{'_perl'}, "Doesn't Have perl");
-
-process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [GLOBAL_CACHE => 1, COMPILE_JS => 2]});
-
-test_cache([$test_dir,  $file, 0],
-           [$test_dir2, $file, 0],
-           [$test_dir,  "$file$Template::Alloy::EXTRA_COMPILE_EXT", 0],
-           [$test_dir,  "$file$Template::Alloy::JS_COMPILE_EXT",  0],
-           );
-ok($Template::Alloy::GLOBAL_CACHE->{$file}, "Is in GLOBAL_CACHE");
-ok($Template::Alloy::GLOBAL_CACHE->{$file}->{'_perl'}, "Now has perl");
+ok($Template::Alloy::GLOBAL_CACHE->{$file}->{'_js'}, "Has js");
 
 ###----------------------------------------------------------------###
 
@@ -526,7 +356,7 @@ process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_DIR => $te
 test_cache([$test_dir,  $file, 0],
            [$test_dir2, $file, 0],
            [$test_dir2,  "$file$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir2,  "$file$Template::Alloy::JS_COMPILE_EXT",  0],
+           [$test_dir2,  "$file$Template::Alloy::JS_COMPILE_EXT",  1],
            );
 
 ###----------------------------------------------------------------###
@@ -538,7 +368,7 @@ process_ok($name => 'BlueBAR', {blue => 'Blue', tt_config => [COMPILE_EXT => '.t
 test_cache([$test_dir,  $file, 0],
            [$test_dir2, $file, 0],
            [$test_dir,  "$file.ttc$Template::Alloy::EXTRA_COMPILE_EXT", 1],
-           [$test_dir,  "$file.ttc$Template::Alloy::JS_COMPILE_EXT",  0],
+           [$test_dir,  "$file.ttc$Template::Alloy::JS_COMPILE_EXT",  1],
            );
 
 ###----------------------------------------------------------------###
