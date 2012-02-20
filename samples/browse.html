@@ -137,19 +137,13 @@ alloy.load_vm();
 
 function run () {
   var f = document.getElementById('file');
+  var n = document.getElementById('rows');
   var l = document.getElementById('loops');
   var o = document.getElementById('out');
   var t = document.getElementById('time');
   $_env = {};
-  $_vars = {
-    data:[
-      {title:'Title1', author:'Author1', abstract:'Abstract1'},
-      {title:'Title2', author:'Author2', abstract:'Abstract2'},
-      {title:'Title3', author:'Author3', abstract:'Abstract3'},
-      {title:'Title4', author:'Author4', abstract:'Abstract4'},
-      {title:'Title5', author:'Author5', abstract:'Abstract5'},
-    ]
-  };
+  $_vars = {data:[]};
+  for (var i = 0; i < n.value; i++) $_vars.data.push({title:'Title'+i,author:'Author'+i, abstract:'Abstract'+i});
   o.innerHTML = 'Running<blink>...</blink>';
   var max = parseInt(l.value);
   var begin = new Date();
@@ -171,6 +165,7 @@ function run () {
 
 <h3>Trial Run</h3>
 File: <select id="file"><script>for (var n in docs) say("<option>"+n+"</option>")</script></select><br>
+Data Rows: <input type="text" id="rows" value="10" size="5"><br>
 Loops: <input type="text" id="loops" value="100" size="5"><input type="button" value="Run" onclick="run()"><br>
 Output: <span id="time"></span><pre id="out" style="color:darkgreen"></pre>
 
