@@ -224,6 +224,7 @@ sub load_js {
         $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
         $ctx->bind('$_call_native' => \&_call_native);
 
+        $ctx->bind('$_UNITTEST', 1) if $self->{'UNITTEST'}; # enable a few extensions used only during testing
         (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
         $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
     }
