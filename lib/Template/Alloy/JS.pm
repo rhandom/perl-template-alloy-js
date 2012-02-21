@@ -479,7 +479,6 @@ sub compile_tree_js {
     return $code;
 }
 
-sub compile_expr_js { _compile_expr_js($_[0],$_[1]) }
 sub _compile_expr_js {
     my ($s,$v,$nctx,$sctx) = @_;
     if (! ref $v) {
@@ -764,7 +763,7 @@ ${indent}var \$_v = alloy.vars();
 ${indent}var old_loop${i} = \$_v.loop;
 ${indent}var err;
 ${indent}try {
-${indent}var loop${i} = ".$self->compile_expr_js($items).";
+${indent}var loop${i} = "._compile_expr_js($self, $items).";
 ${indent}if (loop${i} == null) loop${i} = [];
 ${indent}if (!loop${i}.get_first) loop${i} = new alloy.iterator(loop${i});
 ${indent}\$_v.loop = loop${i};";
@@ -808,7 +807,7 @@ sub compile_js_FOREACH { shift->compile_FOR(@_) }
 sub compile_js_IF {
     my ($self, $node, $str_ref, $indent) = @_;
 
-    $$str_ref .= "\n${indent}if (".$self->compile_expr_js($node->[3], $indent).") {";
+    $$str_ref .= "\n${indent}if ("._compile_expr_js($self, $node->[3]).") {";
     $$str_ref .= $self->compile_tree_js($node->[4], "$indent$INDENT");
 
     while ($node = $node->[5]) { # ELSE, ELSIF's
@@ -818,7 +817,7 @@ sub compile_js_IF {
             $$str_ref .= $self->compile_tree_js($node->[4], "$indent$INDENT");
             last;
         } else {
-            $$str_ref .= "\n${indent}} else if (".$self->compile_expr_js($node->[3], $indent).") {";
+            $$str_ref .= "\n${indent}} else if ("._compile_expr_js($self, $node->[3]).") {";
             $$str_ref .= $self->compile_tree_js($node->[4], "$indent$INDENT");
         }
     }
@@ -877,7 +876,7 @@ sub compile_js_LOOP {
     my $i = $self->{'_loop_index'};
 
     $$str_ref .= "
-${indent}ref = ".$self->compile_expr_js($ref, $indent).";
+${indent}ref = "._compile_expr_js($self, $ref).";
 ${indent}if (ref) {
 ${indent}${INDENT}var global${i} = !alloy.config('SYNTAX') || alloy.config('SYNTAX') !== 'ht' || alloy.config('GLOBAL_VARS');
 ${indent}${INDENT}var oldvars${i}; if (! global${i}) oldvars${i} = alloy.vars();
@@ -1007,7 +1006,7 @@ sub compile_js_RETURN {
 
     if (defined($node->[3])) {
         $$str_ref .= "
-${indent}throw (new alloy.exception('return', {return_val => ".$self->compile_expr_js($node->[3])."}));";
+${indent}throw (new alloy.exception('return', {return_val => "._compile_expr_js($self, $node->[3])."}));";
     } else {
         $$str_ref .= "
 ${indent}throw (new alloy.exception('return',null));";
@@ -1084,11 +1083,11 @@ sub compile_js_SWITCH {
 
     if ($literal) {
         $$str_ref .= "
-${indent}ref = ".$self->compile_expr_js($top->[3], $indent)."
+${indent}ref = "._compile_expr_js($self, $top->[3])."
 ${indent}switch (ref) {";
         for my $node (@cases) {
             $$str_ref .= _node_info($self, $node, "$indent$INDENT");
-            $$str_ref .= "\n${indent}${INDENT}case ".$self->compile_expr_js($node->[3]).":\n";
+            $$str_ref .= "\n${indent}${INDENT}case "._compile_expr_js($self, $node->[3]).":\n";
             $$str_ref .= $self->compile_tree_js($node->[4], "$indent$INDENT$INDENT");
             $$str_ref .= "\n${indent}${INDENT}${INDENT}break;";
         }
@@ -1103,11 +1102,11 @@ ${indent}switch (ref) {";
         my $i = $self->{'_loop_index'};
         my $j = 0;
         $$str_ref .= "
-${indent}var switch${i} = ".$self->compile_expr_js($top->[3], $indent).";";
+${indent}var switch${i} = "._compile_expr_js($self, $top->[3]).";";
         for my $node (@cases) {
             $$str_ref .= _node_info($self, $node, "$indent$INDENT");
             $$str_ref .= "\n$indent" .($j++ ? "} else " : ""). "if ((function () {
-${indent}${INDENT}var val = ".$self->compile_expr_js($node->[3], "$indent$INDENT").";
+${indent}${INDENT}var val = "._compile_expr_js($self, $node->[3]).";
 ${indent}${INDENT}if (!(val instanceof Array)) return switch${i} == val ? 1 : 0;
 ${indent}${INDENT}for (var i = 0; i < val.length; i++) if (val[i] == switch${i}) return 1;
 ${indent}${INDENT}})()) {
@@ -1134,7 +1133,7 @@ sub compile_js_THROW {
     push @args, $named if ! _is_empty_named_args($named); # add named args back on at end - if there are some
 
     $$str_ref .= "
-${indent}alloy.throw(".$self->compile_expr_js($name, $indent).", [".join(", ", map{$self->compile_expr_js($_, $indent)} @args)."]);";
+${indent}alloy.throw("._compile_expr_js($self, $name).", [".join(", ", map{_compile_expr_js($self, $_)} @args)."]);";
     return;
 }
 
@@ -1176,7 +1175,7 @@ ${indent}${INDENT}var names${i} = [";
         my $j = 0;
         foreach $j (0 .. $#names) {
             if (defined $names[$j]) {
-                $$str_ref .= "\n${indent}${INDENT}${INDENT}".$self->compile_expr_js($names[$j], "$indent$INDENT$INDENT").", // $j;";
+                $$str_ref .= "\n${indent}${INDENT}${INDENT}"._compile_expr_js($self, $names[$j]).", // $j;";
             } else {
                 $$str_ref .= "\n${indent}${INDENT}${INDENT}null, // $j";
             }
@@ -1244,7 +1243,7 @@ sub compile_js_WHILE {
     $$str_ref .= "
 ${indent}var count${i} = alloy.config('WHILE_MAX');
 ${indent}while (--count${i} > 0) {
-${indent}${INDENT}var ref = ".$self->compile_expr_js($node->[3], $indent).";
+${indent}${INDENT}var ref = "._compile_expr_js($self, $node->[3]).";
 ${indent}${INDENT}if (! ref) break;"
 .$self->compile_tree_js($node->[4], "$indent$INDENT")."
 ${indent}}";
