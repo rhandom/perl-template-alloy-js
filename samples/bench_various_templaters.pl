@@ -298,8 +298,8 @@ my $ttx   = Template->new(           INCLUDE_PATH => \@dirs, STASH => Template::
 my $ta    = Template::Alloy->new(    INCLUDE_PATH => \@dirs, VARIABLES => $stash_t);
 my $tap   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_PERL => 1);
 my $taps  = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_PERL => 1);
-my $tajss = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1);
-my $tajs  = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, VARIABLES => $stash_t);
+my $tajss = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, EVAL_JS => 'raw');
+my $tajs  = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, EVAL_JS => 'raw', VARIABLES => $stash_t);
 my $tax   = Template::Alloy::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t);
 my $taxs  = Template::Alloy::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t);
 my $taxp  = Template::Alloy::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_PERL => 1);
@@ -358,12 +358,12 @@ my $tests = {
         my $out = ""; $t->process_simple(\$content_tt, {%$stash_t, %$form}, \$out); $out;
     },
     JS_str => sub {
-        my $t = Template::Alloy->new(COMPILE_JS => 1);
+        my $t = Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 'raw');
         $t->{'_documents'} = \%AlloyJS_DOCUMENTS;
         my $out = ""; $t->process_js(\$content_js, {%$stash_t, %$form}, \$out); $out;
     },
     JSR_str => sub {
-        my $t = Template::Alloy->new(COMPILE_JS => 1);
+        my $t = Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 'raw');
         $t->{'_documents'} = \%AlloyJS_DOCUMENTS;
         my $out = ""; $t->process_jsr(\$content_jsr, {%$stash_t, %$form}, \$out); $out;
     },
@@ -455,11 +455,11 @@ my $tests = {
         my $out = ''; $t->process_simple('foo.tt', {%$stash_t, %$form}, \$out); $out;
     },
     JS_file => sub {
-        my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3);
+        my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3, EVAL_JS => 'raw');
         my $out = ''; $t->process_js('foo.jstem', {%$stash_t, %$form}, \$out) || warn $t->error; $out;
     },
     JSR_file => sub {
-        my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3);
+        my $t   = Template::Alloy->new(    INCLUDE_PATH => \@dirs, COMPILE_JS => 1, COMPILE_DIR => $dir3, EVAL_JS => 'raw');
         my $out = ''; $t->process_jsr('foo.jsr', {%$stash_t, %$form}, \$out) || warn $t->error; $out;
     },
     TA_X_file => sub {
@@ -547,6 +547,11 @@ my $tests = {
     TA_H_mem => sub {
         my $t = Template::Alloy->new(    filename => "foo.ht", path => \@dirs, cache => 1, case_sensitve=>1);
         $t->{'_documents'} = \%Alloy_DOCUMENTS;
+        $t->param($stash_ht); $t->param($form); my $out = $t->output;
+    },
+    TA_H_JS_mem => sub {
+        my $t = Template::Alloy::JS->new(filename => "foo.ht", path => \@dirs, cache => 1, case_sensitve=>1);
+        $t->{'_documents'} = \%AlloyX_DOCUMENTS;
         $t->param($stash_ht); $t->param($form); my $out = $t->output;
     },
     TA_H_X_mem => sub {
