@@ -214,52 +214,58 @@ sub load_js {
         print "---------------------------------------------\n";
     }
 
-    # initialize the context
-    my $ctx = $js_context;
-    if (!$ctx) {
-        eval {require JavaScript::V8} || $self->throw('compile_js', "Trouble loading JavaScript::V8: $@");
-        $ctx = $js_context = JavaScript::V8::Context->new;
-
-        $ctx->bind(say => sub { print $_[0],"\n" });
-        $ctx->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
-        $ctx->bind('$_call_native' => \&_call_native);
-
-        $ctx->bind('$_UNITTEST', 1) if $self->{'UNITTEST'}; # enable a few extensions used only during testing
-        (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
-        $ctx->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
-    }
-
     my $name = $json->encode($doc->{'_is_str_ref'} ? $doc->{'_filename'} : $doc->{'name'});
-    my $callback = $ctx->eval(qq{
-        alloy.register_template($name,$$js);
-        (function (out_ref, \$_env, \$_vars) { try { var r = alloy.process($name, out_ref, 1); return r } catch (e) { return {_call_native_throw:e} } })
-    }) || $self->throw('compile_js', "Trouble loading compiled js for $name: $@");
+    $doc->{'_js_name'} = $name;
+    $self->js_context->eval("alloy.register_template($name, $$js)") || $self->throw('compile_js', "Trouble loading compiled js for $name: $@");
+    return defined(wantarray) ? \$js : 1;
+}
 
-    return {code => sub {
-        my ($self, $out_ref) = @_;
-        local $js_self = $self;
-        $ctx->bind('$_vars' => $self->{'_vars'});
-        $ctx->bind('$_env'  => {
-            QR_PRIVATE        => $Template::Alloy::QR_PRIVATE ? "^[_.]" : 0,
-            SYNTAX            => $self->{'SYNTAX'},
-            WHILE_MAX         => $Template::Alloy::WHILE_MAX,
-            MAX_EVAL_RECURSE  => $self->{'MAX_EVAL_RECURSE'}  || $Template::Alloy::MAX_EVAL_RECURSE,
-            MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
-            (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS FILTERS CACHE_STR_REFS)),
-            (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES RECURSION STRICT TRIM UNDEFINED_GET)),
-        });
-        my $out = $callback->([$$out_ref]);
-        if (ref($out) eq 'ARRAY') {
-            $$out_ref = $out->[0];
-        } else {
-            my $e = ref($out) eq 'HASH' && $out->{'_call_native_throw'}  || {};
-            my $type = ref($e) eq 'HASH' && $e->{'type'} || 'jsthrow';
-            my $info = ref($e) eq 'HASH' && $e->{'info'} || $e;
-            $info = eval { $json->encode($info) } || "Error encoding error info: $@" if ref($info) && ref($info) ne 'ARRAY';
-            $self->throw($type, $info);
-        }
-        return 1;
-    }};
+sub play_js {
+    my ($self, $doc, $out_ref) = @_;
+
+    my $ctx = $self->js_context;
+
+    local $js_self = $self;
+    $ctx->bind('$_vars' => $self->{'_vars'});
+    $ctx->bind('$_env'  => {
+        QR_PRIVATE        => $Template::Alloy::QR_PRIVATE ? "^[_.]" : 0,
+        SYNTAX            => $self->{'SYNTAX'},
+        WHILE_MAX         => $Template::Alloy::WHILE_MAX,
+        MAX_EVAL_RECURSE  => $self->{'MAX_EVAL_RECURSE'}  || $Template::Alloy::MAX_EVAL_RECURSE,
+        MAX_MACRO_RECURSE => $self->{'MAX_MACRO_RECURSE'} || $Template::Alloy::MAX_MACRO_RECURSE,
+        (map {$_ => $self->{$_}} grep {defined $self->{$_}} qw(_debug_dirs _debug_off _debug_undef _debug_format DEBUG_FORMAT VMETHOD_FUNCTIONS FILTERS CACHE_STR_REFS)),
+        (map {$_ => 1} grep {$self->{$_}} qw(GLOBAL_VARS LOOP_CONTEXT_VARS LOWER_CASE_VAR_FALLBACK NO_INCLUDES RECURSION STRICT TRIM UNDEFINED_GET)),
+    });
+
+    my $name = $doc->{'_js_name'} || die "Missing _js_name for $doc->{'name'}";
+    my $out  = $ctx->eval("(function (\$_env, \$_vars) { try { var r = alloy.process($name, [''], 1); return r } catch (e) { return {_call_native_throw:e} } })()");
+    if (ref($out) eq 'ARRAY') {
+        $$out_ref = $out->[0];
+    } else {
+        my $e = ref($out) eq 'HASH' && $out->{'_call_native_throw'}  || {};
+        my $type = ref($e) eq 'HASH' && $e->{'type'} || 'jsthrow';
+        my $info = ref($e) eq 'HASH' && $e->{'info'} || $e;
+        $info = eval { $json->encode($info) } || "Error encoding error info: $@" if ref($info) && ref($info) ne 'ARRAY';
+        $self->throw($type, $info);
+    }
+    return 1;
+}
+
+sub js_context {
+    my $self = shift;
+    if (!$js_context) {
+        eval {require JavaScript::V8} || $self->throw('compile_js', "Trouble loading JavaScript::V8: $@");
+        $js_context = JavaScript::V8::Context->new;
+
+        $js_context->bind(say => sub { print $_[0],"\n" });
+        $js_context->bind(debug => sub { require CGI::Ex::Dump; CGI::Ex::Dump::debug(@_) });
+
+        $js_context->bind('$_call_native' => \&_call_native);
+        $js_context->bind('$_UNITTEST', 1) if $self->{'UNITTEST'}; # enable a few extensions used only during testing
+        (my $file = __FILE__) =~ s|JS\.pm$|alloy.js|;
+        $js_context->eval(${ $self->slurp($file) }); $self->throw('compile_js', "Trouble loading javascript pre-amble: $@") if $@;
+    }
+    $js_context;
 }
 
 ###----------------------------------------------------------------###
@@ -280,7 +286,7 @@ sub _native_insert {
     return join '', map {${$self->slurp($self->include_filename($_))}} @$files;
 }
 
-sub _native_load {
+sub _native_load_template {
     my ($self, $file, $extra_str, $extra_args) = @_;
     my $doc;
     if (@_ > 2) {
@@ -291,11 +297,11 @@ sub _native_load {
     } else {
         $doc = $self->load_template($file);
     }
-    $self->throw(file => "Failed to load file $file during native_load") if ! $doc->{'_js'}->{'code'};
+    $self->throw(file => "Failed to load file $file during native_load") if ! $doc->{'_js_name'};
     return 1;
 }
 
-sub _native_load_js {
+sub _native_load_jslib {
     my ($self, $jsfile) = @_;
     $self->throw(undef => "Invalid jsfile \"$jsfile\"") if $jsfile !~ /^\w+$/;
     (my $file = __FILE__) =~ s|JS\.pm$|$jsfile.js|;
