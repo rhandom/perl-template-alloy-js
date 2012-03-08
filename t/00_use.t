@@ -9,7 +9,7 @@
 use strict;
 use warnings;
 
-use Test::More tests => 30;
+use Test::More tests => 34;
 
 ###----------------------------------------------------------------###
 ### loading via can, use, and import
@@ -23,34 +23,52 @@ ok($INC{'Template/Alloy/JS.pm'},       "Now it is loaded");
 
 use_ok('Template::Alloy::JS');
 
-for my $ta (Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 1), Template::Alloy::JS->new(EVAL_JS => 1), Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 'raw')) {
+my $process = sub {
+    my $line = (caller)[2];
+    my ($obj, $in, $test, $vars, $method) = @_;
+    my $out  = '';
+    $method ||= 'process';
+    $obj->$method(\$in, $vars, \$out);
+
+    my $ok = ref($test) ? $out =~ $test : $out eq $test;
+    if ($ok) {
+        ok(1, "Line $line   \"$in\" => \"$out\"");
+    } else {
+        ok(0, "Line $line   \"$in\"");
+        warn "# Was:\n$out\n# Should've been:\n$test\n";
+        print map {"$_\n"} grep { defined } $obj->error if $obj->can('error');
+        if ($method eq 'process') {
+            print $obj->dump_parse_tree(\$in) if $obj->can('dump_parse_tree');
+        } else {
+            my ($k,$v) = each %{ $obj->{'_documents'} };
+            use Data::Dumper;
+            local $Data::Dumper::Terse = 1;
+            local $Data::Dumper::Indent = 0;
+            print "    ".Data::Dumper::Dumper($v->{'_tree'}),"\n";
+        }
+        exit;
+    }
+
+};
+
+for my $ta (Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 1), Template::Alloy::JS->new(EVAL_JS => 1)) {
     print "# ".ref($ta)."\n";
 
-    my $out  = '';
-    my $in   = q{[% JS %] write("Hello from "+get('foo')) [% END %]};
-    my $test = 'Hello from javascript';
-    $ta->process(\$in, {foo => 'javascript'}, \$out) || diag($ta->error);
-    is($out, $test, "$in ===> $test");
-
-    $out = '';
-    $in   = q{[% a = 43; JS %] write(get('a')); set('b', 67) [% END %]~[% b %]};
-    $test = '43~67';
-    $ta->process(\$in, {}, \$out) || diag($ta->error);
-    is($out, $test, "$in ===> $test");
-
-    $out = '';
-    $in   = q{([% write("Hello from "+get('foo')) %])};
-    $test = '(Hello from javascript)';
-    $ta->process_js(\$in, {foo => 'javascript'}, \$out) || diag($ta->error);
-    is($out, $test, "$in ===> $test");
-
-    $out = '';
-    $in   = q{ write("Hello from "+get('foo')) };
-    $test = 'Hello from javascript';
-    $ta->process_jsr(\$in, {foo => 'javascript'}, \$out) || diag($ta->error);
-    is($out, $test, "$in ===> $test");
-
+    $process->($ta, q{[% JS %] write("Hello from "+get('foo')) [% END %]} => 'Hello from javascript', {foo => 'javascript'});
+    $process->($ta, q{[% a = 43; JS %] write(get('a')); set('b', 67) [% END %]~[% b %]} => '43~67', {});
+    $process->($ta, q{([% write("Hello from "+get('foo')) %])} => '(Hello from javascript)', {foo => 'javascript'}, 'process_js');
+    $process->($ta, q{ write("Hello from "+get('foo')) }, 'Hello from javascript', {foo => 'javascript'}, 'process_jsr');
 }
+
+for my $ta (Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 'raw'), Template::Alloy::JS->new(EVAL_JS => 'raw')) {
+    print "# ".ref($ta)."\n";
+
+    $process->($ta, q{[% JS %] write("Hello from "+vars.foo) [% END %]} => 'Hello from javascript', {foo => 'javascript'});
+    $process->($ta, q{[% a = 43; JS %] write(vars.a); vars.b = 67 [% END %]~[% b %]} => '43~67', {});
+    $process->($ta, q{([% write("Hello from "+vars.foo) %])} => '(Hello from javascript)', {foo => 'javascript'}, 'process_js');
+    $process->($ta, q{ write("Hello from "+vars.foo) }, 'Hello from javascript', {foo => 'javascript'}, 'process_jsr');
+}
+#, Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 'raw')) {
 
 print "# compilation\n";
 my $ta = Template::Alloy->new(COMPILE_JS => 1);
