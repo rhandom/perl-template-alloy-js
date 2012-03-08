@@ -859,10 +859,13 @@ sub compile_js_JS {
         my $i = @{ $self->{'_userfunc'} };
         push @{ $self->{'_userfunc'} }, "$note\ntry { userfunc[$i] = (function (\$_vars, \$_env, alloy, userfunc) {
   return eval('(function (write, process, get, set) {'
-    +".join("
-    +", map {$json->encode($_)} split /(?<=\n)/, $node->[4]->[0])."
+    +".($node->[3] && $node->[3] == 2 ? $json->encode($node->[4]->[0]): join("
+    +", map {!ref($_)
+                 ? $json->encode("write(".$json->encode($_).");")
+                 : join('', map {$json->encode($_.";")} split /(?<=\n)/, $_->[0])
+            } ($node->[3] ? @{ $node->[4] } : [$node->[4]->[0]])))."
     +'})');
-})(); } catch (e) { throw 'Error during eval of JS block starting at line $line col $col: '+e };";
+})() } catch (e) { throw 'Error during eval of JS block starting at line $line col $col: '+e };";
         $$str_ref .= "\n${indent}userfunc[$i](function(s){out_ref[0]+=s},alloy._process, alloy._get, alloy._set);";
     }
 }
