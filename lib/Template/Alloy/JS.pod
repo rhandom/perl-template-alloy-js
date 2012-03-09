@@ -1,6 +1,6 @@
 =head1 NAME
 
-Template::Alloy::JS - JavaScript extensions for Template::Alloy
+Template::Alloy::JS - Javascript extensions for Template::Alloy
 
 =head1 SYNOPSIS
 
@@ -12,18 +12,48 @@ Template::Alloy::JS - JavaScript extensions for Template::Alloy
     use Template::Alloy;
     my $ta = Template::Alloy->new(COMPILE_JS => 1);
 
-
     # most Template::Alloy functionality will work the same as without COMPILE_JS
     $ta->process(\qq{(Hello world from [% lang %])\n}, {lang => 'JavaScript'});
 
 
+    #####
+    # In addition to handling regular templates, Template::Alloy::JS enables the
+    # following capabilities (with EVAL_JS set, or by calling process_js or process_jsr):
+
+
+    ### Use Javascript as a directive in regular Template::Alloy templates
+
+    my $ta = Template::Alloy->new(COMPILE_JS => 1, EVAL_JS => 1);
+    $ta->process(\q{
+      [% SET lang = "javascript" %]
+      Hello from [% JS write(get('lang')); %]!
+    });
+
+
+    ### Use Javascript as the template language itself (embedded)
+
+    $ta->process_js(\q{
+      [% set('lang', "javascript"); %]
+      Hello from [% write(get('lang')) %]!
+    });
+
+
+    ### Use Javascript as the entire document
+
+    $ta->process_jsr(\q{
+      set('lang', 'javascript');
+      write("Hello from ");
+      write(get('lang'));
+      write("!");
+    });
+
 
 =head1 DESCRIPTION
 
-The Template::Alloy::Compile role allows for taking the AST returned
-by the Parse role, and translating it into a JavaScript code document.
+The Template::Alloy::JS role allows for taking the AST returned
+by the Parse role, and translating it into a Javascript code document.
 This is in contrast Template::Alloy::Play which executes the AST
-directly, or Template::Alloy::Compile which generates a perl document.
+directly, or Template::Alloy::Compile which generates a perl code document.
 
 Using Javascript has benefits.  Compiling to Javascript allows for
 very fast execution.  If a template is complex, Template::Alloy::JS
@@ -46,7 +76,7 @@ to the template (this is described later in this document).
 The last and largest drawback is that running the V8 engine requires
 that we load the V8 interpreter.  This isn't a problem if you are
 using a persistent environment such as mod_perl.  However, in a normal
-CGI setup, there is no precaching of the JavaScript context or the
+CGI setup, there is no pre-caching of the Javascript context or the
 document, so each hit will have to load the interpreter.  This is a
 large speed penalty.  However, because Template::Alloy::JS strives for
 compatibility, you can get the best of both worlds - faster speed in
@@ -94,7 +124,7 @@ sets COMPILE_JS to true so the following are equivalent:
 
 Additionally, you can call the C<process_js> or C<process_jsr> methods
 described later which would automatically set COMPILE_JS to true, as
-well setting EVAL_JS and SYNTAX.
+well as set EVAL_JS and SYNTAX.
 
 =item C<SYNTAX>
 
@@ -125,14 +155,15 @@ that PRECHOMP and POSTCHOMP still work):
 =item C<jsr>
 
 The jsr syntax indicates that the entire document is to be treated as
-javascript.  Sometimes this may be more cumbersom, but there are times
-it can be very useful.  Such as passing a string to the eval filter
-with SYNTAX=jsr.  Additionally you can use the C<process_jsr> method
-to process your documents (rather than the normal C<process> method
-provided by Template::Alloy), the SYNTAX directive will automatically
-be set to 'jsr', as well as having COMPILE_JS set to true and EVAL_JS
-set to true.  The following is an example of a jsr SYNTAX document (that
-outputs the same content as the previous js SYNTAX example):
+javascript (no template tags are parsed).  Sometimes this may be more
+cumbersom, but there are times it can be very useful.  Such as passing
+a string to the eval filter with SYNTAX=jsr.  Additionally you can use
+the C<process_jsr> method to process your documents (rather than the
+normal C<process> method provided by Template::Alloy), the SYNTAX
+directive will automatically be set to 'jsr', as well as having
+COMPILE_JS set to true and EVAL_JS set to true.  The following is an
+example of a jsr SYNTAX document (that outputs the same content as the
+previous js SYNTAX example):
 
     write('<html>\n<body>\n');
 
@@ -143,8 +174,8 @@ outputs the same content as the previous js SYNTAX example):
 
     write('</body>\n</html>');
 
-Assuming you have EVAL_JS set to true, you could have this in your
-template:
+Assuming you have EVAL_JS set to true, you could have this in a normal
+Template::Alloy document:
 
     ([% "write(Math.pow(2,3))" | eval(SYNTAX => "jsr") %])  # prints (8)
 
@@ -169,6 +200,7 @@ The following Javascript variables will be set during EVAL_JS = 1.
 
 Takes a string and appends it to the document.
 
+    write("A string");
     write(['a', 'b', 'c'].join("|"));
 
 =item C<get>
@@ -239,7 +271,7 @@ is returned.
 =back
 
 EVAL_JS can also be passed a special value of "raw."  When this is set, the
-following variables will be available.
+following variables will be available:
 
 =over 4
 
@@ -270,6 +302,9 @@ in the EVAL_JS=1 section:
 
     vars.foo = 1;   // get('foo') will be 1
     vars.foo = {bar:2};   // get(['foo', 0, '.', 'bar', 0]) will be 2
+
+Note: you could also chose to use alloy.get("bam") and alloy.set("bam", 2) which
+are what the EVAL_JS=1 get and set functions use.
 
 The vars variable is only available when EVAL_JS=raw
 
@@ -307,8 +342,8 @@ available to the alloy object.
     restoreScope:      undoes localization
     load_vm:           loads vmethods.js just in time
     vars:              returns a reference to $_vars
-    set:               provides TT doted variable access to items in the stash (like perl set_variable)
-    get:               provides TT doted variable access to items in the stash (like perl play_expr)
+    set:               provides TT dotted variable access to items in the stash (like perl set_variable)
+    get:               provides TT dotted variable access to items in the stash (like perl play_expr)
     setBlocks:         sets blocks (if any) at beginning of document processing
     saveBlocks:        localizes blocks
     restoreBlocks:     undoes block localization
@@ -331,17 +366,19 @@ available to the alloy object.
 
 =head1 DIRECTIVES
 
-Template::Alloy::JS adds the ability to use a new directive named JS.
-The JS directive treats its contents as Javascript.  This allows you
-to mix Javascript based tags into existing Template::Alloy based
-templates.  In order to use this directive, EVAL_JS should be set to 1
-or "raw" (see the EVAL_JS CONFIGURATION item).
+Template::Alloy::JS adds the ability to use a new directive named JS
+from within regular Template::Alloy style templates.  The JS directive
+treats its contents as Javascript.  This allows you to mix Javascript
+based tags into existing Template::Alloy based templates.  In order to
+use this directive, EVAL_JS should be set to 1 or "raw" (see the
+EVAL_JS CONFIGURATION item).
 
    my $ta = Template::Alloy::JS->new(EVAL_JS=>1);
+
    $ta->process(\q{
      [% JS set('foo', [1,2,3,4,5]) %]
      [% FOR i IN foo %]
-       This variable ([% i %]) was set by javascript.
+       This variable ([% i %] - [% JS get('i') %]) was set by javascript.
      [% END %]
    }) || die $ta->error;
 
@@ -356,10 +393,14 @@ Template::Alloy object, the JS role will automatically be loaded.
 
 =item C<process_js>
 
+This method sets COMPILE_JS, EVAL_JS, and sets SYNTAX to 'js' before
+calling the process_simple method.  If you want EVAL_JS to be
+"raw" you should set it first before calling process_js.
+
     my $ta = Template::Alloy->new;
     $ta->process_js($file);
 
-    # OR
+    # equivalent to
 
     my $ta = Template::Alloy->new(
         COMPILE_JS => 1,
@@ -369,6 +410,22 @@ Template::Alloy object, the JS role will automatically be loaded.
     $ta->process($file);
 
 =item C<process_jsr>
+
+This method sets COMPILE_JS, EVAL_JS, and sets SYNTAX to 'jsr' before
+calling the process_simple method.  If you want EVAL_JS to be
+"raw" you should set it first before calling process_js.
+
+    my $ta = Template::Alloy->new;
+    $ta->process_jsr($file);
+
+    # equivalent to
+
+    my $ta = Template::Alloy->new(
+        COMPILE_JS => 1,
+        EVAL_JS    => 1,
+        SYNTAX     => 'jsr',
+    );
+    $ta->process_simple($file);
 
 =item C<parse_tree_js>
 
@@ -450,6 +507,10 @@ The output is quite a bit more complex than the AST, but under
 mod_perl conditions (with persistent preloaded templates), the
 javascript will run faster than playing the AST in perl each time.
 
+Depending upon the mixture of using normal templates, using the JS directive,
+and using process_js and process_jsr, and using EVAL_JS=raw the document is
+simplified.
+
 =back
 
 =head1 BUGS
@@ -463,10 +524,10 @@ described in the get method.
 
 The USE directive is hampered for the same reason.
 
-The next largest bug is the speed hit.  Again - this isn't a bug, but
-is due to needing to load the JavaScript::V8 interpreter.  Future
-versions will be faster.  Using a persistent environment eliminates
-this issue.
+The next largest bug is the speed hit in non-persistent environments.
+Again - this isn't a bug, but is due to needing to load the
+JavaScript::V8 interpreter.  Future versions will be faster.  Using a
+persistent environment eliminates this issue.
 
 There is no support for the VIEW directive.
 
