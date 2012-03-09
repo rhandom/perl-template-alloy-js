@@ -461,10 +461,14 @@ stash.  This isn't really a bug, but is due to limitations of
 Javascript::V8 bind.  It can be worked around using closures as
 described in the get method.
 
+The USE directive is hampered for the same reason.
+
 The next largest bug is the speed hit.  Again - this isn't a bug, but
 is due to needing to load the JavaScript::V8 interpreter.  Future
 versions will be faster.  Using a persistent environment eliminates
 this issue.
+
+There is no support for the VIEW directive.
 
 =head1 AUTHOR
 
