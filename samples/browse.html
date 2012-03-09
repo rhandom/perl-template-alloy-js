@@ -8,7 +8,7 @@ h3 { margin-bottom: 2px }
 <body>
 <h3>Template/Alloy/alloy.js</h3>
 <div>
-Template/Alloy/alloy.js is not designed for use in a browser.  If you want to do templating in a browser, look at jemplate.
+Template/Alloy/alloy.js is not designed for use in a browser.  If you want to do templating in a browser, look at Jemplate.
 
 That being said, we can use alloy.js in a browser if we are willing to undergo a little pain.  The main practical purpose for this
 is to test various vms, and use the native browser tools for optimizing javascript.
@@ -21,7 +21,7 @@ This file has been tested on Chrome and Firefox.  It will likely break on IE.
 <script>
 $_UNITTEST = 1;
 $_call_native = function (method) {
-  if (method === 'load_js') {
+  if (method === 'load_jslib') {
     var mod = arguments[1];
     if (mod === 'vmethods') {
       var t = 'var $_vmethods = {\n';
