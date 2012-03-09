@@ -1,0 +1,8 @@
+List:
+[% var html = alloy.load_vm().item.html;
+   vars.data.map(function (item) {
+     if (! item.title) return; -%]
+    * [% write(html(item.title)) %]
+    * [% write(html(item.author) || 'no author') %]
+    * [% write(html(item.abstract) || '-') %]
+[% }) -%]

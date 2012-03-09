@@ -1,0 +1,8 @@
+var html = alloy.load_vm().item.html;
+out_ref[0] += "List:\n" + vars.data.map(function (item) {
+     if (! item.title) return '';
+     return '* '+html(item.title)
+     + '\n    * '+(html(item.author) || 'no author')
+     + '\n    * '+(html(item.abstract) || '-')+'\n';
+}).join('');
+
