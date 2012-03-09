@@ -86,6 +86,7 @@ my $tj = Template::Alloy->new(
     INCLUDE_PATH => [$path],
     COMPILE_DIR  => '.tj',
     COMPILE_EXT  => '.outj',
+    EVAL_JS => 'raw',
 );
 my $ta = Template::Alloy->new(
     INCLUDE_PATH => [$path],
@@ -117,7 +118,7 @@ my $vars = {
 };
 
 {
-    my $tests = 5;
+    my $tests = 7;
     plan tests => $tests;
 
     my $expected = '';
@@ -136,6 +137,14 @@ my $vars = {
     is $out, $expected, 'TJ: Template::Alloy::JS';
 
     $out = '';
+    $tj->process_js("$tmpl.jst", $vars, \$out) or die $tj->error;
+    is $out, $expected, 'TJ: Template::Alloy::JS';
+
+    $out = '';
+    $tj->process_jsr("$tmpl.jsr", $vars, \$out) or die $tj->error;
+    is $out, $expected, 'TJ: Template::Alloy::JS';
+
+    $out = '';
     $tp->process_simple("$tmpl.tt", $vars, \$out) or die $tp->error;
     is $out, $expected, 'TP: Template::Alloy (compile to perl)';
 
@@ -149,14 +158,29 @@ my $vars = {
 }
 
 print "Benchmarks with '$tmpl' (datasize=$n)\n";
+$vars->{'data'}->[0]->{'title'} = 1;
 cmpthese timethese -1 => {
     Xslate => sub {
+        $vars->{'data'}->[0]->{'title'}++;
         my $body = $tx->render("$tmpl.tt", {%$vars}) or die;;
         return;
     },
     TJ => sub {
         my $body = '';
+        $vars->{'data'}->[0]->{'title'}++;
         $tj->process_simple("$tmpl.tt", {%$vars}, \$body) or die $tj->error;
+        return;
+    },
+    TJS => sub {
+        my $body = '';
+        $vars->{'data'}->[0]->{'title'}++;
+        $tj->process_js("$tmpl.jst", {%$vars}, \$body) or die $tj->error;
+        return;
+    },
+    TJSR => sub {
+        my $body = '';
+        $vars->{'data'}->[0]->{'title'}++;
+        $tj->process_jsr("$tmpl.jsr", {%$vars}, \$body) or die $tj->error;
         return;
     },
     TP => sub {
@@ -183,32 +207,38 @@ cmpthese timethese -1 => {
 
 =head1 OUTPUT (2012/02/10)
 
-  paul@paul-laptop:~/dev/Template-Alloy-JS$ perl -Ilib -Iblib/lib ./samples/x-rich-env.pl
-  Perl/5.12.4 i686-linux-gnu-thread-multi-64int
-  Text::Xslate/1.5007
-  Template/2.24
-  Template::Alloy/1.016
-  Template::Alloy::JS/1.000
-  1..5
-  ok 1 - TX: Text::Xslate
-  ok 2 - TJ: Template::Alloy::JS
-  ok 3 - TP: Template::Alloy (compile to perl)
-  ok 4 - TT: Template::Toolkit (no XS)
-  ok 5 - TTX: Template::Toolkit with XS
-  Benchmarks with 'include' (datasize=100)
-  Benchmark: running TA, TJ, TP, TT, TTX, Xslate for at least 1 CPU seconds...
-          TA:  1 wallclock secs ( 1.03 usr +  0.00 sys =  1.03 CPU) @ 107.77/s (n=111)
-          TJ:  1 wallclock secs ( 1.10 usr +  0.00 sys =  1.10 CPU) @ 813.64/s (n=895)
-          TP:  2 wallclock secs ( 1.10 usr +  0.00 sys =  1.10 CPU) @ 108.18/s (n=119)
-          TT:  1 wallclock secs ( 1.04 usr +  0.00 sys =  1.04 CPU) @ 106.73/s (n=111)
-         TTX:  1 wallclock secs ( 1.04 usr +  0.00 sys =  1.04 CPU) @ 215.38/s (n=224)
-      Xslate:  1 wallclock secs ( 1.06 usr +  0.00 sys =  1.06 CPU) @ 791.51/s (n=839)
-          Rate     TT     TA     TP    TTX Xslate     TJ
-  TT     107/s     --    -1%    -1%   -50%   -87%   -87%
-  TA     108/s     1%     --    -0%   -50%   -86%   -87%
-  TP     108/s     1%     0%     --   -50%   -86%   -87%
-  TTX    215/s   102%   100%    99%     --   -73%   -74%
-  Xslate 792/s   642%   634%   632%   267%     --    -3%
-  TJ     814/s   662%   655%   652%   278%     3%     --
+paul@paul-laptop:~/dev/Template-Alloy-JS$ perl -Ilib ./samples/x-rich-env.pl
+Perl/5.12.4 i686-linux-gnu-thread-multi-64int
+Text::Xslate/1.5007
+Template/2.24
+Template::Alloy/1.017
+Template::Alloy::JS/1.000
+1..7
+ok 1 - TX: Text::Xslate
+ok 2 - TJ: Template::Alloy::JS
+ok 3 - TJ: Template::Alloy::JS
+ok 4 - TJ: Template::Alloy::JS
+ok 5 - TP: Template::Alloy (compile to perl)
+ok 6 - TT: Template::Toolkit (no XS)
+ok 7 - TTX: Template::Toolkit with XS
+Benchmarks with 'include' (datasize=100)
+Benchmark: running TA, TJ, TJS, TJSR, TP, TT, TTX, Xslate for at least 1 CPU seconds...
+        TA:  1 wallclock secs ( 1.09 usr +  0.00 sys =  1.09 CPU) @ 110.09/s (n=120)
+        TJ:  1 wallclock secs ( 1.00 usr +  0.00 sys =  1.00 CPU) @ 895.00/s (n=895)
+       TJS:  1 wallclock secs ( 1.10 usr +  0.01 sys =  1.11 CPU) @ 2017.12/s (n=2239)
+      TJSR:  1 wallclock secs ( 1.05 usr +  0.01 sys =  1.06 CPU) @ 2112.26/s (n=2239)
+        TP:  1 wallclock secs ( 1.06 usr +  0.01 sys =  1.07 CPU) @ 112.15/s (n=120)
+        TT:  2 wallclock secs ( 1.09 usr +  0.00 sys =  1.09 CPU) @ 109.17/s (n=119)
+       TTX:  1 wallclock secs ( 1.06 usr +  0.01 sys =  1.07 CPU) @ 223.36/s (n=239)
+    Xslate:  1 wallclock secs ( 1.02 usr +  0.02 sys =  1.04 CPU) @ 1076.92/s (n=1120)
+         Rate     TT     TA     TP    TTX     TJ Xslate    TJS   TJSR
+TT      109/s     --    -1%    -3%   -51%   -88%   -90%   -95%   -95%
+TA      110/s     1%     --    -2%   -51%   -88%   -90%   -95%   -95%
+TP      112/s     3%     2%     --   -50%   -87%   -90%   -94%   -95%
+TTX     223/s   105%   103%    99%     --   -75%   -79%   -89%   -89%
+TJ      895/s   720%   713%   698%   301%     --   -17%   -56%   -58%
+Xslate 1077/s   886%   878%   860%   382%    20%     --   -47%   -49%
+TJS    2017/s  1748%  1732%  1699%   803%   125%    87%     --    -5%
+TJSR   2112/s  1835%  1819%  1783%   846%   136%    96%     5%     --
 
 =cut
