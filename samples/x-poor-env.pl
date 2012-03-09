@@ -155,6 +155,12 @@ cmpthese timethese -1 => {
         Template::Alloy->new(COMPILE_JS=>1,INCLUDE_PATH=>[$path])->process_simple("$tmpl.tt", $vars, \$body);
         return;
     },
+    TJS => sub {
+        local $Template::Alloy::JS::js_context;
+        my $body = '';
+        Template::Alloy->new(INCLUDE_PATH=>[$path],COMPILE_DIR=>'.tj')->process_js("$tmpl.jst", $vars, \$body);
+        return;
+    },
     TP => sub {
         my $body;
         Template::Alloy->new(COMPILE_PERL=>1,INCLUDE_PATH=>[$path])->process_simple("$tmpl.tt", $vars, \$body);
@@ -187,6 +193,12 @@ cmpthese timethese -1 => {
         local $Template::Alloy::JS::js_context;
         my $body = '';
         Template::Alloy->new(COMPILE_JS=>1,INCLUDE_PATH=>[$path],COMPILE_DIR=>'.tj')->process_simple("$tmpl.tt", $vars, \$body);
+        return;
+    },
+    TJS => sub {
+        local $Template::Alloy::JS::js_context;
+        my $body = '';
+        Template::Alloy->new(INCLUDE_PATH=>[$path],COMPILE_DIR=>'.tj')->process_js("$tmpl.jst", $vars, \$body);
         return;
     },
     TA => sub {
