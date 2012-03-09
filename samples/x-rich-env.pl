@@ -161,25 +161,21 @@ print "Benchmarks with '$tmpl' (datasize=$n)\n";
 $vars->{'data'}->[0]->{'title'} = 1;
 cmpthese timethese -1 => {
     Xslate => sub {
-        $vars->{'data'}->[0]->{'title'}++;
         my $body = $tx->render("$tmpl.tt", {%$vars}) or die;;
         return;
     },
     TJ => sub {
         my $body = '';
-        $vars->{'data'}->[0]->{'title'}++;
         $tj->process_simple("$tmpl.tt", {%$vars}, \$body) or die $tj->error;
         return;
     },
     TJS => sub {
         my $body = '';
-        $vars->{'data'}->[0]->{'title'}++;
         $tj->process_js("$tmpl.jst", {%$vars}, \$body) or die $tj->error;
         return;
     },
     TJSR => sub {
         my $body = '';
-        $vars->{'data'}->[0]->{'title'}++;
         $tj->process_jsr("$tmpl.jsr", {%$vars}, \$body) or die $tj->error;
         return;
     },
