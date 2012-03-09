@@ -531,6 +531,12 @@ persistent environment eliminates this issue.
 
 There is no support for the VIEW directive.
 
+CALL_CONTEXT is not supported.  This again, is because of the
+boundaries between Perl and Javascript.  All coderefs passed in the
+stash will be called in "item" context rather than the normal "smart"
+context.  Arguably "smart" context never should've existed as it blurs
+the lines between template and code.
+
 =head1 AUTHOR
 
 Paul Seamons <paul at seamons dot com>
