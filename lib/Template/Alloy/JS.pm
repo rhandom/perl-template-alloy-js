@@ -147,6 +147,7 @@ sub parse_tree_js {
         push @tree, [$1, $begin, pos($$str_ref)];
         $post_chomp = $2 || $self->{'POST_CHOMP'};
         $post_chomp =~ y/-=~+/1230/ if $post_chomp;
+        $tree[-1]->[0] =~ s/(?<![\n\;])([\ \t]*)$/;$1/;
         next;
     }
 
@@ -862,7 +863,7 @@ sub compile_js_JS {
     +".($node->[3] && $node->[3] == 2 ? $json->encode($node->[4]->[0]): join("
     +", map {!ref($_)
                  ? $json->encode("write(".$json->encode($_).");")
-                 : join('', map {$json->encode($_.";")} split /(?<=\n)/, $_->[0])
+                 : join("\n    +", map {$json->encode($_)} split /(?<=\n)/, $_->[0])
             } ($node->[3] ? @{ $node->[4] } : [$node->[4]->[0]])))."
     +'})');
 })() } catch (e) { throw 'Error during eval of JS block starting at line $line col $col: '+e };";
