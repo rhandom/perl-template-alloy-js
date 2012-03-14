@@ -257,12 +257,12 @@ The set function is not available with EVAL_JS is set to raw.
 =item C<process>
 
 Takes a filename, optional args hashref (associative ref), and
-optional local flag.  The filename will be used as template name, the
-template will be loaded and ran.  Any arguments passed will be set
-into the variable stash.  If the local flag is set, then the stash
-will be localized (INCLUDE is called rather than PROCESS) to prevent
-included templates from corrupting the stash.  The processed document
-is returned.
+optional local flag and returns the processed contents of the file.
+The filename will be used as template name, the template will be
+loaded and ran.  Any arguments passed will be set into the variable
+stash.  If the local flag is set, then the stash will be localized
+(INCLUDE is called rather than PROCESS) to prevent included templates
+from corrupting the stash.  The processed document is returned.
 
     var foo = process("sometemplate.tt");
     var foo = process("sometemplate.tt", {foo:"bar"}); // pass a variable in
