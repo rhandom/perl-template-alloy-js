@@ -537,9 +537,13 @@ stash will be called in "item" context rather than the normal "smart"
 context.  Arguably "smart" context never should've existed as it blurs
 the lines between template and code.
 
+=head1 CODE REPOSITORY
+
+https://github.com/rhandom/perl-template-alloy-js
+
 =head1 AUTHOR
 
-Paul Seamons <paul at seamons dot com>
+Paul Seamons <paul@seamons.com>
 
 =head1 LICENSE
 
